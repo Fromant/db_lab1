@@ -354,6 +354,41 @@ async function terminateAssignment(type, id) {
     }
 }
 
+async function loadListPositions() {
+    const doLoadOnlyAvailable = document.getElementById("position_do_load_available").checked;
+    try {
+        fetch(`/api/positions?doLoadAll=${!doLoadOnlyAvailable}`).then(async res => {
+            const rows = (await res.json()).rows;
+
+            const html = [`<table class="report-table">
+                <tr>
+                    <th>Position name</th>
+                    <th>Position description</th>
+                    <th>Position payrate</th>
+                    <th>Position max work rate</th>
+                    <th>Position estimated work rate</th>
+                </tr>`];
+
+            rows.forEach(position => {
+                html.push(`
+                <tr>
+                    <td>${position.title}</td>
+                    <td>${position.description}</td>
+                    <td>${position.payrate}</td>
+                    <td>${position.max_work_rate}</td>
+                    <td>${position.estimated_work_rate}</td>
+                </tr>`)
+            });
+
+            html.push('</table>')
+
+            document.getElementById('positions_loaded').innerHTML = html.join('');
+        })
+    } catch (error) {
+        alert('Error loading assignments: ' + error.message);
+    }
+};
+
 // Report Generation
 async function generateReport() {
     const start = document.getElementById('reportStart').value;

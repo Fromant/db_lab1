@@ -15,6 +15,7 @@
         <option value="employee"> Add employee</option>
         <option value="fire">Fire employee</option>
         <option value="position">Position</option>
+        <option value="listPosition">List of positions</option>
         <option value="contract">Contract</option>
         <option value="child">Child</option>
         <option value="bonusType">Bonus Type</option>
@@ -22,6 +23,7 @@
         <option value="contractAssignment">Contract Assignment</option>
         <option value="bonusAssignment">Bonus Assignment</option>
         <option value="termination">Terminate Assignments</option>
+
     </select>
 
     <!-- Forms -->
@@ -160,6 +162,21 @@
                 <button onclick="loadActiveAssignments()">Load Active Assignments</button>
             </div>
             <div id="activeAssignments"></div>
+        </div>
+
+        <!-- List positions form -->
+        <div id="listPositionForm" class="form-section" style="display: none;">
+            <h2>Positions list</h2>
+            <div class="form-group">
+                <input type="checkbox" id="position_do_load_available"/>
+                <label for="position_do_load_available">Load only avialable positions</label>
+            </div>
+            
+            <div class="form-group">
+                <button onclick="loadListPositions()">Load positions</button>
+            </div>
+
+            <div id="positions_loaded"></div>
         </div>
     </div>
 

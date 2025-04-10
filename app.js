@@ -100,12 +100,27 @@ app.post('/api/employees', (req, res) => {
     );
 });
 
+app.get('/api/positions', (req, res) => {
+    const doLoadAll = req.query.doLoadAll;
+    if (doLoadAll==="true") {
+        db.all('SELECT title, description, payrate, max_work_rate, estimated_work_rate FROM positions', (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ rows });
+        })
+    } else {
+        db.all('SELECT title, description, payrate, max_work_rate, estimated_work_rate FROM positions WHERE estimated_work_rate > 0', (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ rows });
+        })
+    };
+})
+
 // Positions Endpoints
 app.post('/api/positions', (req, res) => {
     const { title, description, payrate, max_work_rate } = req.body;
     db.run(
-        'INSERT INTO positions (title, description, payrate, max_work_rate) VALUES (?, ?, ?, ?)',
-        [title, description, payrate, max_work_rate],
+        'INSERT INTO positions (title, description, payrate, max_work_rate, estimated_work_rate) VALUES (?, ?, ?, ?, ?)',
+        [title, description, payrate, max_work_rate, max_work_rate],
         function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
