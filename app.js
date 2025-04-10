@@ -225,6 +225,78 @@ app.get('/api/search/bonuses', (req, res) => {
     });
 });
 
+// Update active position assignments endpoint
+app.get('/api/position-assignments/active', (req, res) => {
+    const { employeeId } = req.query;
+    let query = `
+        SELECT ps.*, e.full_name, p.title 
+        FROM position_schedule ps
+        JOIN employees e ON ps.employee_id = e.id
+        JOIN positions p ON ps.position_id = p.id
+        WHERE (ps.end_date IS NULL OR ps.end_date > DATE('now'))
+    `;
+    
+    const params = [];
+    if (employeeId) {
+        query += ' AND ps.employee_id = ?';
+        params.push(employeeId);
+    }
+
+    db.all(query, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Terminate position assignment
+app.put('/api/position-assignments/:id/terminate', (req, res) => {
+    const { end_date } = req.body;
+    db.run(
+        'UPDATE position_schedule SET end_date = ? WHERE id = ?',
+        [end_date || new Date().toISOString().split('T')[0], req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Position terminated successfully' });
+        }
+    );
+});
+
+// Similarly update contract assignments endpoint
+app.get('/api/contract-assignments/active', (req, res) => {
+    const { employeeId } = req.query;
+    let query = `
+        SELECT cs.*, e.full_name, c.description 
+        FROM contract_schedule cs
+        JOIN employees e ON cs.employee_id = e.id
+        JOIN contracts c ON cs.contract_id = c.id
+        WHERE (cs.end_date IS NULL OR cs.end_date > DATE('now'))
+    `;
+    
+    const params = [];
+    if (employeeId) {
+        query += ' AND cs.employee_id = ?';
+        params.push(employeeId);
+    }
+
+    db.all(query, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Terminate contract assignment
+app.put('/api/contract-assignments/:id/terminate', (req, res) => {
+    const { end_date } = req.body;
+    db.run(
+        'UPDATE contract_schedule SET end_date = ? WHERE id = ?',
+        [end_date || new Date().toISOString().split('T')[0], req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Contract terminated successfully' });
+        }
+    );
+});
+
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
     const { start, end } = req.query;

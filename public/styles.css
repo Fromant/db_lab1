@@ -1,0 +1,65 @@
+body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+}
+
+.section {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+}
+
+.form-group {
+    margin: 10px 0;
+}
+
+input,
+select,
+button {
+    padding: 8px;
+    margin: 5px;
+}
+
+.autocomplete {
+    position: relative;
+    display: inline-block;
+}
+
+.autocomplete-items {
+    position: absolute;
+    border: 1px solid #ddd;
+    z-index: 99;
+}
+
+.autocomplete-item {
+    padding: 10px;
+    cursor: pointer;
+    background: #fff;
+}
+
+.autocomplete-item:hover {
+    background: #f0f0f0;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.report-table td,
+.report-table th {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+.assignment-card {
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+.terminate-btn {
+    background-color: #ff4444;
+    color: white;
+    margin-left: 10px;
+}
