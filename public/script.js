@@ -7,6 +7,8 @@ document.getElementById('entitySelector').addEventListener('change', function ()
 // Autocomplete Setup
 function setupAutocomplete(input, endpoint, displayField) {
     input.addEventListener('input', async () => {
+        document.querySelectorAll('.autocomplete-item').forEach(el => el.remove());
+
         const term = input.value;
         const response = await fetch(`/api/search/${endpoint}?term=${term}`);
         const data = await response.json();
@@ -65,6 +67,35 @@ async function addEmployee() {
         const result = await response.json();
         alert(`Employee added with ID: ${result.id}`);
         clearForm('employee');
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function fireEmployee() {
+    const data = {
+        employee_id: document.getElementById('fireEmployee').dataset.selectedId,
+        fire_date: document.getElementById('empFireDate').value || null
+    };
+
+    if (!data.employee_id) {
+        console.log(document.getElementById('fireEmployee'))
+        alert("Please, choose employee to fire")
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/fire_employee', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (response.ok) {
+            alert('Firing successful!');
+        } else {
+            throw new Error('Failed to fire');
+        }
+        clearForm('fire');
     } catch (error) {
         alert('Error: ' + error.message);
     }
@@ -355,7 +386,7 @@ async function generateReport() {
                         <td>$${emp.tax_amount.toFixed(2)}</td>
                         <td>$${emp.net_income.toFixed(2)}</td>
                     </tr>
-                `).join('')}ф
+                `).join('')}
             </table>
         `;
 
@@ -364,3 +395,8 @@ async function generateReport() {
         alert('Error generating report: ' + error.message);
     }
 }
+
+document.addEventListener("keydown", (event) => {
+    const keyName = event.key;
+    if (keyName === "Escape") document.querySelectorAll('.autocomplete-item').forEach(el => el.remove());
+})

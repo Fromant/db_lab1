@@ -7,7 +7,7 @@ const db = new sqlite3.Database('./database.db');
 // Initialize Database
 db.serialize(() => {
     db.run('PRAGMA foreign_keys = ON;');
-    
+
     const schema = `
     CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +93,7 @@ app.post('/api/employees', (req, res) => {
     db.run(
         'INSERT INTO employees (full_name, hire_date, fire_date) VALUES (?, ?, ?)',
         [full_name, hire_date, fire_date || null],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -106,7 +106,7 @@ app.post('/api/positions', (req, res) => {
     db.run(
         'INSERT INTO positions (title, description, payrate, max_work_rate) VALUES (?, ?, ?, ?)',
         [title, description, payrate, max_work_rate],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -119,7 +119,7 @@ app.post('/api/contracts', (req, res) => {
     db.run(
         'INSERT INTO contracts (description, payrate, start_date, end_date) VALUES (?, ?, ?, ?)',
         [description, payrate, start_date, end_date],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -132,7 +132,7 @@ app.post('/api/children', (req, res) => {
     db.run(
         'INSERT INTO children (employee_id, second_parent_id, child_name, birth_date) VALUES (?, ?, ?, ?)',
         [employee_id, second_parent_id || null, child_name, birth_date],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -145,7 +145,7 @@ app.post('/api/bonus-types', (req, res) => {
     db.run(
         'INSERT INTO bonuses_dict (value, description) VALUES (?, ?)',
         [value, description],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -158,7 +158,7 @@ app.post('/api/position-assignments', (req, res) => {
     db.run(
         'INSERT INTO position_schedule (employee_id, position_id, work_rate, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
         [employee_id, position_id, work_rate, start_date, end_date || null],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -171,7 +171,7 @@ app.post('/api/contract-assignments', (req, res) => {
     db.run(
         'INSERT INTO contract_schedule (employee_id, contract_id, start_date, end_date) VALUES (?, ?, ?, ?)',
         [employee_id, contract_id, start_date, end_date || null],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -184,7 +184,7 @@ app.post('/api/bonuses', (req, res) => {
     db.run(
         'INSERT INTO bonuses (bonus_dict_id, employee_id, date) VALUES (?, ?, ?)',
         [bonus_dict_id, employee_id, date],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
         }
@@ -195,7 +195,7 @@ app.post('/api/bonuses', (req, res) => {
 app.get('/api/search/employees', (req, res) => {
     const term = req.query.term;
     db.all(
-        'SELECT id, full_name FROM employees WHERE full_name LIKE ?',
+        'SELECT id, full_name FROM employees WHERE fire_date IS NULL AND full_name LIKE ?',
         [`%${term}%`],
         (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
@@ -235,7 +235,7 @@ app.get('/api/position-assignments/active', (req, res) => {
         JOIN positions p ON ps.position_id = p.id
         WHERE (ps.end_date IS NULL OR ps.end_date > DATE('now'))
     `;
-    
+
     const params = [];
     if (employeeId) {
         query += ' AND ps.employee_id = ?';
@@ -254,7 +254,7 @@ app.put('/api/position-assignments/:id/terminate', (req, res) => {
     db.run(
         'UPDATE position_schedule SET end_date = ? WHERE id = ?',
         [end_date || new Date().toISOString().split('T')[0], req.params.id],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ message: 'Position terminated successfully' });
         }
@@ -271,7 +271,7 @@ app.get('/api/contract-assignments/active', (req, res) => {
         JOIN contracts c ON cs.contract_id = c.id
         WHERE (cs.end_date IS NULL OR cs.end_date > DATE('now'))
     `;
-    
+
     const params = [];
     if (employeeId) {
         query += ' AND cs.employee_id = ?';
@@ -290,12 +290,24 @@ app.put('/api/contract-assignments/:id/terminate', (req, res) => {
     db.run(
         'UPDATE contract_schedule SET end_date = ? WHERE id = ?',
         [end_date || new Date().toISOString().split('T')[0], req.params.id],
-        function(err) {
+        function (err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ message: 'Contract terminated successfully' });
         }
     );
 });
+
+app.put('/api/fire_employee', (req, res) => {
+    const { employee_id, fire_date } = req.body;
+    db.run(
+        'UPDATE employees SET fire_date = ? WHERE id = ?',
+        [fire_date || new Date().toISOString().split('T')[0], employee_id],
+        function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Employee fired successfully' });
+        }
+    )
+})
 
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
@@ -324,17 +336,17 @@ app.get('/api/reports/annual', (req, res) => {
         ORDER BY (position_income + contract_income + bonus_total) DESC
     `, [end, start, end, start, start, end], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        
+
         const report = rows.map(row => ({
             ...row,
             total_income: row.position_income + row.contract_income + row.bonus_total,
             tax_rate: Math.max(13 - (row.child_count * 3), 0),
-            tax_amount: (row.position_income + row.contract_income + row.bonus_total) 
-                      * Math.max(13 - (row.child_count * 3), 0) / 100,
-            net_income: (row.position_income + row.contract_income + row.bonus_total) 
-                      * (1 - Math.max(13 - (row.child_count * 3), 0) / 100)
+            tax_amount: (row.position_income + row.contract_income + row.bonus_total)
+                * Math.max(13 - (row.child_count * 3), 0) / 100,
+            net_income: (row.position_income + row.contract_income + row.bonus_total)
+                * (1 - Math.max(13 - (row.child_count * 3), 0) / 100)
         }));
-        
+
         res.json(report);
     });
 });

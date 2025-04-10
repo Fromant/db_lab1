@@ -12,7 +12,8 @@
 
     <!-- Entity Selection -->
     <select id="entitySelector">
-        <option value="employee">Employee</option>
+        <option value="employee"> Add employee</option>
+        <option value="fire">Fire employee</option>
         <option value="position">Position</option>
         <option value="contract">Contract</option>
         <option value="child">Child</option>
@@ -36,6 +37,18 @@
                 <input type="date" id="empFireDate">
             </div>
             <button onclick="addEmployee()">Add Employee</button>
+        </div>
+
+        <!-- Fire employee Form -->
+        <div id="fireForm" class="form-section" style="display: none;">
+            <h2>Fire Employee</h2>
+            <div class="form-group">
+                <input type="text" id="fireEmployee" placeholder="Full Name" class="employee-search">
+            </div>
+            <div class="form-group">
+                <input type="date" id="empFireDate">
+            </div>
+            <button onclick="fireEmployee()">Fire Employee</button>
         </div>
 
         <!-- Position Form -->
