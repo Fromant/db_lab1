@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payroll System Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        input, button { margin: 5px; padding: 5px; }
+        table { border-collapse: collapse; margin-top: 10px; }
+        td, th { border: 1px solid #ddd; padding: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Payroll Test Interface</h1>
+
+    <!-- Add Employee -->
+    <div class="section">
+        <h3>Add Employee</h3>
+        <input type="text" id="empName" placeholder="Name">
+        <input type="text" id="empPosition" placeholder="Position">
+        <input type="number" id="empSalary" placeholder="Base Salary">
+        <input type="date" id="empJoinDate">
+        <button onclick="addEmployee()">Add Employee</button>
+    </div>
+
+    <!-- Add Contract -->
+    <div class="section">
+        <h3>Add Contract</h3>
+        <input type="number" id="contractEmpId" placeholder="Employee ID">
+        <input type="number" id="contractAmount" placeholder="Amount">
+        <input type="date" id="contractStart">
+        <input type="date" id="contractEnd">
+        <button onclick="addContract()">Add Contract</button>
+    </div>
+
+    <!-- Generate Annual Report -->
+    <div class="section">
+        <h3>Annual Income Report</h3>
+        <input type="date" id="reportStart">
+        <input type="date" id="reportEnd">
+        <button onclick="getAnnualReport()">Generate Report</button>
+        <div id="reportResults"></div>
+    </div>
+
+    <script>
+        async function postData(url, data) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return await response.json();
+        }
+
+        // Employee Operations
+        async function addEmployee() {
+            const employee = {
+                name: document.getElementById('empName').value,
+                position: document.getElementById('empPosition').value,
+                base_salary: parseFloat(document.getElementById('empSalary').value),
+                date_joined: document.getElementById('empJoinDate').value
+            };
+            
+            const result = await postData('/api/employees', employee);
+            console.log('Employee added:', result);
+        }
+
+        // Contract Operations
+        async function addContract() {
+            const contract = {
+                employee_id: parseInt(document.getElementById('contractEmpId').value),
+                contract_salary: parseFloat(document.getElementById('contractAmount').value),
+                start_date: document.getElementById('contractStart').value,
+                end_date: document.getElementById('contractEnd').value
+            };
+            
+            const result = await postData('/api/contracts', contract);
+            console.log('Contract added:', result);
+        }
+
+        // Annual Report
+        async function getAnnualReport() {
+            const start = document.getElementById('reportStart').value;
+            const end = document.getElementById('reportEnd').value;
+            
+            const response = await fetch(`/api/reports/annual?start=${start}&end=${end}`);
+            const data = await response.json();
+            
+            const html = `
+                <table>
+                    <tr><th>Employee</th><th>Total Income</th></tr>
+                    ${data.map(item => `
+                        <tr>
+                            <td>${item.name}</td>
+                            <td>${item.total_income.toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+            
+            document.getElementById('reportResults').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
