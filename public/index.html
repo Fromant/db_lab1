@@ -1,104 +1,461 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Payroll System Test</title>
+    <title>Payroll System</title>
     <style>
-        body { font-family: Arial; padding: 20px; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
-        input, button { margin: 5px; padding: 5px; }
-        table { border-collapse: collapse; margin-top: 10px; }
-        td, th { border: 1px solid #ddd; padding: 8px; }
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .form-group { margin: 10px 0; }
+        input, select, button { padding: 8px; margin: 5px; }
+        .autocomplete { position: relative; display: inline-block; }
+        .autocomplete-items { position: absolute; border: 1px solid #ddd; z-index: 99; }
+        .autocomplete-item { padding: 10px; cursor: pointer; background: #fff; }
+        .autocomplete-item:hover { background: #f0f0f0; }
+        .report-table { width: 100%; border-collapse: collapse; }
+        .report-table td, .report-table th { border: 1px solid #ddd; padding: 8px; }
     </style>
 </head>
 <body>
-    <h1>Payroll Test Interface</h1>
+    <h1>Payroll Management System</h1>
 
-    <!-- Add Employee -->
-    <div class="section">
-        <h3>Add Employee</h3>
-        <input type="text" id="empName" placeholder="Name">
-        <input type="text" id="empPosition" placeholder="Position">
-        <input type="number" id="empSalary" placeholder="Base Salary">
-        <input type="date" id="empJoinDate">
-        <button onclick="addEmployee()">Add Employee</button>
+    <!-- Entity Selection -->
+    <select id="entitySelector">
+        <option value="employee">Employee</option>
+        <option value="position">Position</option>
+        <option value="contract">Contract</option>
+        <option value="child">Child</option>
+        <option value="bonusType">Bonus Type</option>
+        <option value="positionAssignment">Position Assignment</option>
+        <option value="contractAssignment">Contract Assignment</option>
+        <option value="bonusAssignment">Bonus Assignment</option>
+    </select>
+
+    <!-- Forms -->
+    <div class="section" id="formsSection">
+        <!-- Employee Form -->
+        <div id="employeeForm" class="form-section">
+            <h2>Add Employee</h2>
+            <div class="form-group">
+                <input type="text" id="empName" placeholder="Full Name">
+            </div>
+            <div class="form-group">
+                <input type="date" id="empHireDate" required>
+                <input type="date" id="empFireDate">
+            </div>
+            <button onclick="addEmployee()">Add Employee</button>
+        </div>
+
+        <!-- Position Form -->
+        <div id="positionForm" class="form-section" style="display: none;">
+            <h2>Add Position</h2>
+            <div class="form-group">
+                <input type="text" id="positionTitle" placeholder="Title" required>
+            </div>
+            <div class="form-group">
+                <input type="text" id="positionDesc" placeholder="Description">
+            </div>
+            <div class="form-group">
+                <input type="number" id="positionPayrate" step="0.01" placeholder="Payrate" required>
+                <input type="number" id="positionMaxRate" step="0.1" placeholder="Max Work Rate" required>
+            </div>
+            <button onclick="addPosition()">Add Position</button>
+        </div>
+
+        <!-- Contract Form -->
+        <div id="contractForm" class="form-section" style="display: none;">
+            <h2>Add Contract</h2>
+            <div class="form-group">
+                <input type="text" id="contractDesc" placeholder="Description" required>
+            </div>
+            <div class="form-group">
+                <input type="number" id="contractPayrate" step="0.01" placeholder="Payrate" required>
+            </div>
+            <div class="form-group">
+                <input type="date" id="contractStart" required>
+                <input type="date" id="contractEnd" required>
+            </div>
+            <button onclick="addContract()">Add Contract</button>
+        </div>
+
+        <!-- Child Form -->
+        <div id="childForm" class="form-section" style="display: none;">
+            <h2>Add Child</h2>
+            <div class="form-group autocomplete">
+                <input type="text" id="childParent" placeholder="Parent Employee" class="employee-search">
+                <input type="text" id="childSecondParent" placeholder="Second Parent (optional)" class="employee-search">
+            </div>
+            <div class="form-group">
+                <input type="text" id="childName" placeholder="Child Name" required>
+                <input type="date" id="childBirthDate" required>
+            </div>
+            <button onclick="addChild()">Add Child</button>
+        </div>
+
+        <!-- Bonus Type Form -->
+        <div id="bonusTypeForm" class="form-section" style="display: none;">
+            <h2>Add Bonus Type</h2>
+            <div class="form-group">
+                <input type="number" id="bonusValue" step="0.01" placeholder="Value" required>
+                <input type="text" id="bonusDesc" placeholder="Description" required>
+            </div>
+            <button onclick="addBonusType()">Add Bonus Type</button>
+        </div>
+
+        <!-- Position Assignment Form -->
+        <div id="positionAssignmentForm" class="form-section" style="display: none;">
+            <h2>Assign Position</h2>
+            <div class="form-group autocomplete">
+                <input type="text" id="assignEmpPosition" placeholder="Employee" class="employee-search">
+                <input type="text" id="assignPosition" placeholder="Position" class="position-search">
+            </div>
+            <div class="form-group">
+                <input type="number" id="assignWorkRate" step="0.1" placeholder="Work Rate" required>
+                <input type="date" id="assignPosStart" required>
+                <input type="date" id="assignPosEnd">
+            </div>
+            <button onclick="assignPosition()">Assign Position</button>
+        </div>
+
+        <!-- Contract Assignment Form -->
+        <div id="contractAssignmentForm" class="form-section" style="display: none;">
+            <h2>Assign Contract</h2>
+            <div class="form-group autocomplete">
+                <input type="text" id="assignEmpContract" placeholder="Employee" class="employee-search">
+                <input type="text" id="assignContract" placeholder="Contract" class="contract-search">
+            </div>
+            <div class="form-group">
+                <input type="date" id="assignConStart" required>
+                <input type="date" id="assignConEnd">
+            </div>
+            <button onclick="assignContract()">Assign Contract</button>
+        </div>
+
+        <!-- Bonus Assignment Form -->
+        <div id="bonusAssignmentForm" class="form-section" style="display: none;">
+            <h2>Assign Bonus</h2>
+            <div class="form-group autocomplete">
+                <input type="text" id="assignEmpBonus" placeholder="Employee" class="employee-search">
+                <input type="text" id="assignBonusType" placeholder="Bonus Type" class="bonus-search">
+            </div>
+            <div class="form-group">
+                <input type="date" id="bonusDate" required>
+            </div>
+            <button onclick="assignBonus()">Assign Bonus</button>
+        </div>
     </div>
 
-    <!-- Add Contract -->
+    <!-- Reports Section -->
     <div class="section">
-        <h3>Add Contract</h3>
-        <input type="number" id="contractEmpId" placeholder="Employee ID">
-        <input type="number" id="contractAmount" placeholder="Amount">
-        <input type="date" id="contractStart">
-        <input type="date" id="contractEnd">
-        <button onclick="addContract()">Add Contract</button>
-    </div>
-
-    <!-- Generate Annual Report -->
-    <div class="section">
-        <h3>Annual Income Report</h3>
-        <input type="date" id="reportStart">
-        <input type="date" id="reportEnd">
-        <button onclick="getAnnualReport()">Generate Report</button>
+        <h2>Annual Report</h2>
+        <div class="form-group">
+            <input type="date" id="reportStart">
+            <input type="date" id="reportEnd">
+            <button onclick="generateReport()">Generate Report</button>
+        </div>
         <div id="reportResults"></div>
     </div>
 
     <script>
-        async function postData(url, data) {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+        // Form Visibility Control
+        document.getElementById('entitySelector').addEventListener('change', function() {
+            document.querySelectorAll('.form-section').forEach(el => el.style.display = 'none');
+            document.getElementById(this.value + 'Form').style.display = 'block';
+        });
+
+        // Autocomplete Setup
+        function setupAutocomplete(input, endpoint, displayField) {
+            input.addEventListener('input', async () => {
+                const term = input.value;
+                const response = await fetch(`/api/search/${endpoint}?term=${term}`);
+                const data = await response.json();
+                
+                const list = document.createElement('div');
+                list.className = 'autocomplete-items';
+                
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'autocomplete-item';
+                    div.textContent = item[displayField];
+                    div.dataset.id = item.id;
+                    div.onclick = () => {
+                        input.value = item[displayField];
+                        input.dataset.selectedId = item.id;
+                        list.remove();
+                    };
+                    list.appendChild(div);
+                });
+                
+                input.parentNode.appendChild(list);
             });
-            return await response.json();
         }
 
-        // Employee Operations
+        // Initialize Autocompletes
+        document.querySelectorAll('.employee-search').forEach(input => {
+            setupAutocomplete(input, 'employees', 'full_name');
+        });
+
+        document.querySelectorAll('.position-search').forEach(input => {
+            setupAutocomplete(input, 'positions', 'title');
+        });
+
+        document.querySelectorAll('.contract-search').forEach(input => {
+            setupAutocomplete(input, 'contracts', 'description');
+        });
+
+        document.querySelectorAll('.bonus-search').forEach(input => {
+            setupAutocomplete(input, 'bonuses', 'description');
+        });
+
+        // Entity Creation Functions
         async function addEmployee() {
-            const employee = {
-                name: document.getElementById('empName').value,
-                position: document.getElementById('empPosition').value,
-                base_salary: parseFloat(document.getElementById('empSalary').value),
-                date_joined: document.getElementById('empJoinDate').value
+            const data = {
+                full_name: document.getElementById('empName').value,
+                hire_date: document.getElementById('empHireDate').value,
+                fire_date: document.getElementById('empFireDate').value || null
             };
             
-            const result = await postData('/api/employees', employee);
-            console.log('Employee added:', result);
+            try {
+                const response = await fetch('/api/employees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Employee added with ID: ${result.id}`);
+                clearForm('employee');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
         }
 
-        // Contract Operations
+        async function addPosition() {
+            const data = {
+                title: document.getElementById('positionTitle').value,
+                description: document.getElementById('positionDesc').value,
+                payrate: parseFloat(document.getElementById('positionPayrate').value),
+                max_work_rate: parseFloat(document.getElementById('positionMaxRate').value)
+            };
+
+            try {
+                const response = await fetch('/api/positions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Position added with ID: ${result.id}`);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
         async function addContract() {
-            const contract = {
-                employee_id: parseInt(document.getElementById('contractEmpId').value),
-                contract_salary: parseFloat(document.getElementById('contractAmount').value),
+            const data = {
+                description: document.getElementById('contractDesc').value,
+                payrate: parseFloat(document.getElementById('contractPayrate').value),
                 start_date: document.getElementById('contractStart').value,
                 end_date: document.getElementById('contractEnd').value
             };
-            
-            const result = await postData('/api/contracts', contract);
-            console.log('Contract added:', result);
+
+            try {
+                const response = await fetch('/api/contracts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Contract added with ID: ${result.id}`);
+                clearForm('contract');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
         }
 
-        // Annual Report
-        async function getAnnualReport() {
+        async function addChild() {
+            const data = {
+                employee_id: document.getElementById('childParent').dataset.selectedId,
+                second_parent_id: document.getElementById('childSecondParent').dataset.selectedId || null,
+                child_name: document.getElementById('childName').value,
+                birth_date: document.getElementById('childBirthDate').value
+            };
+
+            if (!data.employee_id) {
+                alert('Please select a parent employee');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/children', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Child record added with ID: ${result.id}`);
+                clearForm('child');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function addBonusType() {
+            const data = {
+                description: document.getElementById('bonusDesc').value,
+                value: parseFloat(document.getElementById('bonusValue').value),
+            };
+
+            try {
+                const response = await fetch('/api/bonus-types', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Bonus type added with ID: ${result.id}`);
+                clearForm('bonusType');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function assignPosition() {
+            const data = {
+                employee_id: document.getElementById('assignEmpPosition').dataset.selectedId,
+                position_id: document.getElementById('assignPosition').dataset.selectedId,
+                work_rate: parseFloat(document.getElementById('assignWorkRate').value),
+                start_date: document.getElementById('assignPosStart').value,
+                end_date: document.getElementById('assignPosEnd').value || null
+            };
+
+            if (!data.employee_id || !data.position_id) {
+                alert('Please select both employee and position');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/position-assignments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Position assigned successfully! ID: ${result.id}`);
+                clearForm('positionAssignment');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function assignContract() {
+            const data = {
+                employee_id: document.getElementById('assignEmpContract').dataset.selectedId,
+                contract_id: document.getElementById(document.getElementById('assignContract').dataset.selectedId),
+                start_date: document.getElementById('assignConStart').value,
+                end_date: document.getElementById('assignConEnd').value || null
+            };
+
+            if (!data.employee_id || !data.contract_id) {
+                alert('Please select both employee and contract');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/contract-assignments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Contract assigned with ID: ${result.id}`);
+                clearForm('contractAssignment');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function assignBonus() {
+            const data = {
+                bonus_dict_id: parseFloat(document.getElementById('assignBonusType').dataset.selectedId),
+                employee_id: document.getElementById('assignEmpBonus').dataset.selectedId,
+                date: document.getElementById('bonusDate').value
+            };
+
+            if (!data.bonus_dict_id || !data.employee_id) {
+                alert('Please select both employee and contract');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/bonuses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(`Bonus assigned with ID: ${result.id}`);
+                clearForm('bonusAssignment');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function clearForm(formType) {
+            document.getElementById(`${formType}Form`).querySelectorAll('input').forEach(input => {
+                input.value = '';
+                if (input.dataset.selectedId) delete input.dataset.selectedId;
+            });
+        }
+        // Date input explanations
+        function addDateHints() {
+            document.querySelectorAll('input[type="date"]').forEach(input => {
+                const hint = document.createElement('small');
+                hint.className = 'date-hint';
+                hint.textContent = input.required ? '(required)' : '(optional)';
+                input.parentNode.appendChild(hint);
+            });
+        }
+        addDateHints();
+
+        // Report Generation
+        async function generateReport() {
             const start = document.getElementById('reportStart').value;
             const end = document.getElementById('reportEnd').value;
             
-            const response = await fetch(`/api/reports/annual?start=${start}&end=${end}`);
-            const data = await response.json();
-            
-            const html = `
-                <table>
-                    <tr><th>Employee</th><th>Total Income</th></tr>
-                    ${data.map(item => `
+            try {
+                const response = await fetch(`/api/reports/annual?start=${start}&end=${end}`);
+                const data = await response.json();
+                
+                const html = `
+                    <table class="report-table">
                         <tr>
-                            <td>${item.name}</td>
-                            <td>${item.total_income.toFixed(2)}</td>
+                            <th>Employee</th>
+                            <th>Position Income</th>
+                            <th>Contract Income</th>
+                            <th>Bonuses</th>
+                            <th>Children</th>
+                            <th>Tax Rate</th>
+                            <th>Tax Amount</th>
+                            <th>Net Income</th>
                         </tr>
-                    `).join('')}
-                </table>
-            `;
-            
-            document.getElementById('reportResults').innerHTML = html;
+                        ${data.map(emp => `
+                            <tr>
+                                <td>${emp.full_name}</td>
+                                <td>$${emp.position_income.toFixed(2)}</td>
+                                <td>$${emp.contract_income.toFixed(2)}</td>
+                                <td>$${emp.bonus_total.toFixed(2)}</td>
+                                <td>${emp.child_count}</td>
+                                <td>${emp.tax_rate}%</td>
+                                <td>$${emp.tax_amount.toFixed(2)}</td>
+                                <td>$${emp.net_income.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}ф
+                    </table>
+                `;
+                
+                document.getElementById('reportResults').innerHTML = html;
+            } catch (error) {
+                alert('Error generating report: ' + error.message);
+            }
         }
     </script>
 </body>
