@@ -391,13 +391,22 @@ async function loadListPositions() {
 
 // Report Generation
 async function generateReport() {
-    const start = document.getElementById('reportStart').value;
-    const end = document.getElementById('reportEnd').value;
+    const year = document.getElementById('reportYear').value;
+
+    // Проверка года перед отправкой
+    if (!year || !/^\d{4}$/.test(year)) {
+        alert("Укажите год в формате YYYY");
+        return;
+    }
 
     try {
-        const response = await fetch(`/api/reports/annual?start=${start}&end=${end}`);
+        const response = await fetch(`/api/reports/annual?year=${year}`);
+        if (!response.ok) throw new Error("Ошибка сервера");
         const data = await response.json();
-
+        
+        // Проверка типа данных и установка значения по умолчанию
+        const reportData = Array.isArray(data) ? data : [];
+        
         const html = `
             <table class="report-table">
                 <tr>
@@ -410,24 +419,27 @@ async function generateReport() {
                     <th>Tax Amount</th>
                     <th>Net Income</th>
                 </tr>
-                ${data.map(emp => `
+                ${reportData.map(emp => `
                     <tr>
-                        <td>${emp.full_name}</td>
-                        <td>$${emp.position_income.toFixed(2)}</td>
-                        <td>$${emp.contract_income.toFixed(2)}</td>
-                        <td>$${emp.bonus_total.toFixed(2)}</td>
-                        <td>${emp.child_count}</td>
-                        <td>${emp.tax_rate}%</td>
-                        <td>$${emp.tax_amount.toFixed(2)}</td>
-                        <td>$${emp.net_income.toFixed(2)}</td>
+                        <td>${emp.full_name || 'N/A'}</td>
+                        <td>$${(emp.position_income || 0).toFixed(2)}</td>
+                        <td>$${(emp.contract_income || 0).toFixed(2)}</td>
+                        <td>$${(emp.bonus_total || 0).toFixed(2)}</td>
+                        <td>${emp.child_count || 0}</td>
+                        <td>${emp.tax_rate || 0}%</td>
+                        <td>$${(emp.tax_amount || 0).toFixed(2)}</td>
+                        <td>$${(emp.net_income || 0).toFixed(2)}</td>
                     </tr>
                 `).join('')}
             </table>
         `;
 
         document.getElementById('reportResults').innerHTML = html;
+
     } catch (error) {
         alert('Error generating report: ' + error.message);
+        document.getElementById('reportResults').innerHTML = 
+            `<p class="error">Error: ${error.message}</p>`;
     }
 }
 

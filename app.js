@@ -406,42 +406,55 @@ app.put('/api/fire_employee', (req, res) => {
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
     const { year } = req.query;
-    
-    db.all(`
-        WITH MonthlyData AS (
-            SELECT 
-                e.id,
-                strftime('%Y-%m', date) AS month,
-                SUM(
-                    (p.payrate * ps.work_rate) +
-                    (c.payrate / (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)) *
-                    (JULIANDAY(MIN(cs.end_date, date)) - JULIANDAY(MAX(cs.start_date, date)) + 1) +
-                    bd.value
-                ) AS total_income
-            FROM employees e
-            LEFT JOIN position_schedule ps ON e.id = ps.employee_id
-            LEFT JOIN positions p ON ps.position_id = p.id
-            LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
-            LEFT JOIN contracts c ON cs.contract_id = c.id
-            LEFT JOIN bonuses b ON e.id = b.employee_id
-            LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
-            WHERE strftime('%Y', date) = ?
-            GROUP BY e.id, month
-        )
-        SELECT
+
+    // Проверка параметра year
+    if (!year || !/^\d{4}$/.test(year)) {
+        return res.status(400).json({ error: "Неверный параметр 'year'" });
+    }
+
+    // Исправленный SQL-запрос
+    const sql = `
+        SELECT 
             e.id,
             e.full_name,
-            SUM(md.total_income) AS gross_income,
-            COUNT(DISTINCT c.id) AS child_count,
-            SUM(md.total_income) * (1 - MAX(0, 13 - (COUNT(DISTINCT c.id)*3))/100) AS net_income
+            COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
+            COALESCE(SUM(c.payrate), 0) AS contract_income,
+            COALESCE(SUM(bd.value), 0) AS bonus_total,
+            (SELECT COUNT(*) FROM children WHERE employee_id = e.id) AS child_count
         FROM employees e
-        LEFT JOIN MonthlyData md ON e.id = md.id
-        LEFT JOIN children c ON e.id = c.employee_id
+        LEFT JOIN position_schedule ps 
+            ON e.id = ps.employee_id 
+            AND strftime('%Y', ps.start_date) = ?
+        LEFT JOIN positions p 
+            ON ps.position_id = p.id
+        LEFT JOIN contract_schedule cs 
+            ON e.id = cs.employee_id 
+            AND strftime('%Y', cs.start_date) = ?
+        LEFT JOIN contracts c 
+            ON cs.contract_id = c.id
+        LEFT JOIN bonuses b 
+            ON e.id = b.employee_id 
+            AND strftime('%Y', b.date) = ?
+        LEFT JOIN bonuses_dict bd 
+            ON b.bonus_dict_id = bd.id
         GROUP BY e.id
-        ORDER BY net_income DESC
-    `, [year], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+    `;
+
+    db.all(sql, [year, year, year], (err, rows) => {
+        if (err) {
+            console.error("Ошибка SQL:", err.message);
+            return res.status(500).json({ error: "Ошибка базы данных" });
+        }
+
+        // Форматирование данных
+        const report = rows.map(row => ({
+            ...row,
+            tax_rate: Math.max(13 - (row.child_count * 3), 0),
+            tax_amount: (row.position_income + row.contract_income + row.bonus_total) * (Math.max(13 - (row.child_count * 3), 0) / 100),
+            net_income: (row.position_income + row.contract_income + row.bonus_total) * (1 - Math.max(13 - (row.child_count * 3), 0) / 100)
+        }));
+
+        res.json(report);
     });
 });
 

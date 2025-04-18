@@ -186,6 +186,14 @@
         <div class="form-group">
             <input type="date" id="reportStart">
             <input type="date" id="reportEnd">
+            <input 
+                type="number" 
+                id="reportYear" 
+                placeholder="Year (for example, 2023)" 
+                min="2000" 
+                max="2100"
+                required
+            >
             <button onclick="generateReport()">Generate Report</button>
         </div>
         <div id="reportResults"></div>
