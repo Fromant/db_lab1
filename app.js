@@ -169,15 +169,45 @@ app.post('/api/bonus-types', (req, res) => {
 
 // Position Assignments
 app.post('/api/position-assignments', (req, res) => {
-    const { employee_id, position_id, work_rate, start_date, end_date } = req.body;
-    db.run(
-        'INSERT INTO position_schedule (employee_id, position_id, work_rate, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
-        [employee_id, position_id, work_rate, start_date, end_date || null],
-        function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ id: this.lastID });
+    
+});
+
+app.post('/api/position-assignments', (req, res) => {
+    const { employee_id, work_rate } = req.body;
+    db.get(`
+        SELECT SUM(work_rate) AS total 
+        FROM position_schedule 
+        WHERE employee_id = ? 
+        AND (end_date IS NULL OR end_date > DATE('now'))
+    `, [employee_id], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        if ((row.total || 0) + work_rate > 1.5) {
+            return res.status(400).json({ error: "Total work rate exceeds 1.5" });
         }
-    );
+        const { employee_id, position_id, work_rate, start_date, end_date } = req.body;
+        db.run(
+            'INSERT INTO position_schedule (employee_id, position_id, work_rate, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
+            [employee_id, position_id, work_rate, start_date, end_date || null],
+            function (err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ id: this.lastID });
+            }   
+        );
+    });
+});
+
+app.get('/api/vacancies', (req, res) => {
+    db.all(`
+        SELECT 
+            p.title,
+            p.max_work_rate - p.estimated_work_rate AS available_rate
+        FROM positions p
+        WHERE p.max_work_rate > p.estimated_work_rate
+    `, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
 });
 
 // Contract Assignments
@@ -223,6 +253,55 @@ app.get('/api/search/positions', (req, res) => {
     db.all('SELECT id, title FROM positions', (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
+    });
+});
+
+app.get('/api/salary', (req, res) => {
+    const { employeeId, year, month } = req.query;
+    
+    const startDate = `${year}-${month.padStart(2, '0')}-01`;
+    const endDate = `${year}-${month.padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
+
+    db.get(`
+        SELECT 
+            COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
+            COALESCE(SUM(c.payrate / (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1) * 
+                (JULIANDAY(MIN(cs.end_date, ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1), 0) 
+                AS contract_income,
+            COALESCE(SUM(bd.value), 0) AS bonus_total,
+            (SELECT COUNT(*) FROM children 
+             WHERE employee_id = ? 
+             AND birth_date >= date('now', '-18 years')) AS child_count
+        FROM employees e
+        LEFT JOIN position_schedule ps ON e.id = ps.employee_id
+            AND ps.start_date <= ? AND (ps.end_date >= ? OR ps.end_date IS NULL)
+        LEFT JOIN positions p ON ps.position_id = p.id
+        LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
+            AND cs.start_date <= ? AND (cs.end_date >= ? OR cs.end_date IS NULL)
+        LEFT JOIN contracts c ON cs.contract_id = c.id
+        LEFT JOIN bonuses b ON e.id = b.employee_id
+            AND b.date BETWEEN ? AND ?
+        LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
+        WHERE e.id = ?
+    `, [endDate, startDate, employeeId, endDate, startDate, endDate, startDate, startDate, endDate, employeeId], 
+    (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        const total = row.position_income + row.contract_income + row.bonus_total;
+        const taxRate = Math.max(13 - (row.child_count * 3), 0);
+        const netIncome = total * (1 - taxRate / 100);
+        if (netIncome <= 0) {
+            const letter = `Уважаемый(ая) ${employeeName}, ваш заработок за ${month}-${year} составляет ${netIncome}.`;
+            res.json({ message: letter});
+        }
+        else {
+        res.json({
+            gross: total,
+            tax: total * taxRate / 100,
+            net: netIncome,
+            childDiscount: row.child_count * 3
+            });
+        }
     });
 });
 
@@ -326,43 +405,43 @@ app.put('/api/fire_employee', (req, res) => {
 
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
-    const { start, end } = req.query;
+    const { year } = req.query;
+    
     db.all(`
-        SELECT 
+        WITH MonthlyData AS (
+            SELECT 
+                e.id,
+                strftime('%Y-%m', date) AS month,
+                SUM(
+                    (p.payrate * ps.work_rate) +
+                    (c.payrate / (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)) *
+                    (JULIANDAY(MIN(cs.end_date, date)) - JULIANDAY(MAX(cs.start_date, date)) + 1) +
+                    bd.value
+                ) AS total_income
+            FROM employees e
+            LEFT JOIN position_schedule ps ON e.id = ps.employee_id
+            LEFT JOIN positions p ON ps.position_id = p.id
+            LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
+            LEFT JOIN contracts c ON cs.contract_id = c.id
+            LEFT JOIN bonuses b ON e.id = b.employee_id
+            LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
+            WHERE strftime('%Y', date) = ?
+            GROUP BY e.id, month
+        )
+        SELECT
             e.id,
             e.full_name,
-            COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
-            COALESCE(SUM(c.payrate), 0) AS contract_income,
-            COALESCE(SUM(bd.value), 0) AS bonus_total,
-            (SELECT COUNT(*) FROM children 
-             WHERE employee_id = e.id 
-             AND birth_date >= date('now', '-18 years')) AS child_count
+            SUM(md.total_income) AS gross_income,
+            COUNT(DISTINCT c.id) AS child_count,
+            SUM(md.total_income) * (1 - MAX(0, 13 - (COUNT(DISTINCT c.id)*3))/100) AS net_income
         FROM employees e
-        LEFT JOIN position_schedule ps ON e.id = ps.employee_id
-            AND ps.start_date <= ? AND (ps.end_date >= ? OR ps.end_date IS NULL)
-        LEFT JOIN positions p ON ps.position_id = p.id
-        LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
-            AND cs.start_date <= ? AND (cs.end_date >= ? OR cs.end_date IS NULL)
-        LEFT JOIN contracts c ON cs.contract_id = c.id
-        LEFT JOIN bonuses b ON e.id = b.employee_id
-            AND b.date BETWEEN ? AND ?
-        LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
+        LEFT JOIN MonthlyData md ON e.id = md.id
+        LEFT JOIN children c ON e.id = c.employee_id
         GROUP BY e.id
-        ORDER BY (position_income + contract_income + bonus_total) DESC
-    `, [end, start, end, start, start, end], (err, rows) => {
+        ORDER BY net_income DESC
+    `, [year], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-
-        const report = rows.map(row => ({
-            ...row,
-            total_income: row.position_income + row.contract_income + row.bonus_total,
-            tax_rate: Math.max(13 - (row.child_count * 3), 0),
-            tax_amount: (row.position_income + row.contract_income + row.bonus_total)
-                * Math.max(13 - (row.child_count * 3), 0) / 100,
-            net_income: (row.position_income + row.contract_income + row.bonus_total)
-                * (1 - Math.max(13 - (row.child_count * 3), 0) / 100)
-        }));
-
-        res.json(report);
+        res.json(rows);
     });
 });
 
