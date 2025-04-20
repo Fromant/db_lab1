@@ -7,29 +7,43 @@ document.getElementById('entitySelector').addEventListener('change', function ()
 // Autocomplete Setup
 function setupAutocomplete(input, endpoint, displayField) {
     input.addEventListener('input', async () => {
-        document.querySelectorAll('.autocomplete-item').forEach(el => el.remove());
+        try {
+            // Удаляем предыдущие элементы
+            document.querySelectorAll('.autocomplete-item').forEach(el => el.remove());
 
-        const term = input.value;
-        const response = await fetch(`/api/search/${endpoint}?term=${term}`);
-        const data = await response.json();
+            const term = input.value.trim();
+            if (term.length < 2) return; // Не ищем при коротких запросах
 
-        const list = document.createElement('div');
-        list.className = 'autocomplete-items';
+            // Запрос к API
+            const response = await fetch(`/api/search/${endpoint}?term=${term}`);
+            if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+            
+            const data = await response.json();
+            if (!data.length) return; // Нет данных
 
-        data.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'autocomplete-item';
-            div.textContent = item[displayField];
-            div.dataset.id = item.id;
-            div.onclick = () => {
-                input.value = item[displayField];
-                input.dataset.selectedId = item.id;
-                list.remove();
-            };
-            list.appendChild(div);
-        });
+            // Создаем список
+            const list = document.createElement('div');
+            list.className = 'autocomplete-items';
 
-        input.parentNode.appendChild(list);
+            data.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'autocomplete-item';
+                div.textContent = item[displayField];
+                div.dataset.id = item.id;
+                div.onclick = () => {
+                    input.value = item[displayField];
+                    input.dataset.selectedId = item.id.toString(); 
+                    console.log('Выбрано:', item.id, item[displayField]);
+                    list.remove();
+                };
+                list.appendChild(div);
+            });
+
+            input.parentNode.appendChild(list);
+
+        } catch (error) {
+            console.error('Ошибка автозаполнения:', error);
+        }
     });
 }
 
@@ -220,17 +234,41 @@ async function assignPosition() {
 }
 
 async function assignContract() {
+    const employeeInput = document.getElementById('assignEmpContract');
+    const contractInput = document.getElementById('assignContract');
+
+    console.log('employeeInput:', employeeInput?.dataset.selectedId); // Проверка значения
+    console.log('contractInput:', contractInput?.dataset.selectedId); // Проверка значения
+
+    if (!employeeInput || !contractInput) {
+        alert('Элементы формы не найдены');
+        return;
+    }
+
+    const employeeId = Number(employeeInput.dataset.selectedId);
+    const contractId = Number(contractInput.dataset.selectedId);
+
+    console.log('employeeId (number):', employeeId); // Проверка преобразования
+    console.log('contractId (number):', contractId); // Проверка преобразования
+
+    if (isNaN(employeeId)) {
+        alert('Сотрудник не выбран');
+        return;
+    }
+    if (isNaN(contractId)) {
+        alert('Контракт не выбран');
+        return;
+    }
+
+    // Формируем данные
     const data = {
-        employee_id: document.getElementById('assignEmpContract').dataset.selectedId,
-        contract_id: document.getElementById(document.getElementById('assignContract').dataset.selectedId),
+        employee_id: employeeId,
+        contract_id: contractId,
         start_date: document.getElementById('assignConStart').value,
         end_date: document.getElementById('assignConEnd').value || null
     };
 
-    if (!data.employee_id || !data.contract_id) {
-        alert('Please select both employee and contract');
-        return;
-    }
+    console.log('Данные для отправки:', data);
 
     try {
         const response = await fetch('/api/contract-assignments', {
@@ -238,11 +276,17 @@ async function assignContract() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Ошибка сервера: ${errorText}`);
+        }
+
         const result = await response.json();
-        alert(`Contract assigned with ID: ${result.id}`);
+        alert(`Контракт назначен (ID: ${result.id})`);
         clearForm('contractAssignment');
     } catch (error) {
-        alert('Error: ' + error.message);
+        alert(`Ошибка: ${error.message}`);
     }
 }
 
@@ -389,24 +433,71 @@ async function loadListPositions() {
     }
 };
 
+//getting Salary
+async function calculateSalary() {
+    const employeeInput = document.getElementById('salaryEmployeeName');
+    const employeeId = employeeInput.dataset.selectedId;
+    const year = document.getElementById('salaryYear').value;
+    const month = document.getElementById('salaryMonth').value.padStart(2, '0');
+
+    if (!employeeId || !year || !month) {
+        alert("Please select an employee and fill all fields");
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/salary?employeeId=${employeeId}&year=${year}&month=${month}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const data = await response.json();
+        
+        const formatValue = (value) => {
+            return value === 0 ? 'No income' : `$${value.toFixed(2)}`;
+        };
+
+        const html = `
+            <div class="salary-result-item">
+                <strong>Gross:</strong> ${formatValue(data.gross)}
+            </div>
+            <div class="salary-result-item">
+                <strong>Tax:</strong> ${data.tax === 0 ? 'No tax' : `$${data.tax.toFixed(2)}`}
+            </div>
+            <div class="salary-result-item">
+                <strong>Net Income:</strong> ${formatValue(data.net)}
+            </div>
+            <div class="salary-result-item">
+                <strong>Child Discount:</strong> ${data.childDiscount || 0}%
+            </div>
+        `;
+
+        document.getElementById('salaryResult').innerHTML = html;
+
+    } catch (error) {
+        document.getElementById('salaryResult').innerHTML = `
+            <div class="error">Error: ${error.message}</div>
+        `;
+    }
+}
+
 // Report Generation
 async function generateReport() {
     const year = document.getElementById('reportYear').value;
-
-    // Проверка года перед отправкой
+    
     if (!year || !/^\d{4}$/.test(year)) {
-        alert("Укажите год в формате YYYY");
+        alert("Please enter a valid year in YYYY format");
         return;
     }
 
     try {
         const response = await fetch(`/api/reports/annual?year=${year}`);
-        if (!response.ok) throw new Error("Ошибка сервера");
-        const data = await response.json();
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
         
-        // Проверка типа данных и установка значения по умолчанию
-        const reportData = Array.isArray(data) ? data : [];
+        const reportData = await response.json();
         
+        const formatIncome = (value) => {
+            return value === 0 ? 'No income' : `$${value.toFixed(2)}`;
+        };
+
         const html = `
             <table class="report-table">
                 <tr>
@@ -421,14 +512,14 @@ async function generateReport() {
                 </tr>
                 ${reportData.map(emp => `
                     <tr>
-                        <td>${emp.full_name || 'N/A'}</td>
-                        <td>$${(emp.position_income || 0).toFixed(2)}</td>
-                        <td>$${(emp.contract_income || 0).toFixed(2)}</td>
-                        <td>$${(emp.bonus_total || 0).toFixed(2)}</td>
+                        <td>${emp.employee_name || 'Unknown'}</td>
+                        <td>${formatIncome(emp.position_income)}</td>
+                        <td>${formatIncome(emp.contract_income)}</td>
+                        <td>${formatIncome(emp.bonus_total)}</td>
                         <td>${emp.child_count || 0}</td>
                         <td>${emp.tax_rate || 0}%</td>
-                        <td>$${(emp.tax_amount || 0).toFixed(2)}</td>
-                        <td>$${(emp.net_income || 0).toFixed(2)}</td>
+                        <td>${emp.tax_amount === 0 ? 'No tax' : `$${emp.tax_amount.toFixed(2)}`}</td>
+                        <td>${formatIncome(emp.net_income)}</td>
                     </tr>
                 `).join('')}
             </table>
@@ -437,7 +528,6 @@ async function generateReport() {
         document.getElementById('reportResults').innerHTML = html;
 
     } catch (error) {
-        alert('Error generating report: ' + error.message);
         document.getElementById('reportResults').innerHTML = 
             `<p class="error">Error: ${error.message}</p>`;
     }

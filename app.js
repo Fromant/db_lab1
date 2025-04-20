@@ -169,32 +169,55 @@ app.post('/api/bonus-types', (req, res) => {
 
 // Position Assignments
 app.post('/api/position-assignments', (req, res) => {
-    
-});
+    // Извлекаем все необходимые поля из тела запроса
+    const { employee_id, position_id, work_rate, start_date, end_date } = req.body;
 
-app.post('/api/position-assignments', (req, res) => {
-    const { employee_id, work_rate } = req.body;
-    db.get(`
-        SELECT SUM(work_rate) AS total 
-        FROM position_schedule 
-        WHERE employee_id = ? 
-        AND (end_date IS NULL OR end_date > DATE('now'))
-    `, [employee_id], (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        if ((row.total || 0) + work_rate > 1.5) {
-            return res.status(400).json({ error: "Total work rate exceeds 1.5" });
+    // Проверяем наличие обязательных полей
+    if (!employee_id || !position_id || work_rate === undefined || !start_date) {
+        return res.status(400).json({ 
+            error: "Отсутствуют обязательные поля: employee_id, position_id, work_rate, start_date" 
+        });
+    }
+
+    // Проверяем, что work_rate - число
+    if (typeof work_rate !== 'number') {
+        return res.status(400).json({ error: "work_rate должен быть числом" });
+    }
+
+    // Проверяем текущую нагрузку сотрудника
+    db.get(
+        `SELECT SUM(work_rate) AS total 
+         FROM position_schedule 
+         WHERE employee_id = ? 
+         AND (end_date IS NULL OR end_date > DATE('now'))`,
+        [employee_id],
+        (err, row) => {
+            if (err) {
+                console.error('Ошибка при проверке нагрузки:', err.message);
+                return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+            }
+
+            const totalWorkRate = (row?.total || 0) + work_rate;
+            if (totalWorkRate > 1.5) {
+                return res.status(400).json({ error: "Общая нагрузка превышает 1.5" });
+            }
+
+            // Создаем новое назначение
+            db.run(
+                `INSERT INTO position_schedule 
+                 (employee_id, position_id, work_rate, start_date, end_date) 
+                 VALUES (?, ?, ?, ?, ?)`,
+                [employee_id, position_id, work_rate, start_date, end_date || null],
+                function (err) {
+                    if (err) {
+                        console.error('Ошибка при создании назначения:', err.message);
+                        return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+                    }
+                    res.status(201).json({ id: this.lastID });
+                }
+            );
         }
-        const { employee_id, position_id, work_rate, start_date, end_date } = req.body;
-        db.run(
-            'INSERT INTO position_schedule (employee_id, position_id, work_rate, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
-            [employee_id, position_id, work_rate, start_date, end_date || null],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ id: this.lastID });
-            }   
-        );
-    });
+    );
 });
 
 app.get('/api/vacancies', (req, res) => {
@@ -265,19 +288,26 @@ app.get('/api/salary', (req, res) => {
     db.get(`
         SELECT 
             COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
-            COALESCE(SUM(c.payrate / (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1) * 
-                (JULIANDAY(MIN(cs.end_date, ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1), 0) 
-                AS contract_income,
+            COALESCE(SUM(
+                c.payrate * 
+                (
+                    (JULIANDAY(MIN(cs.end_date, ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1) 
+                    / 
+                    (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)
+                )
+            ), 0) AS contract_income,
             COALESCE(SUM(bd.value), 0) AS bonus_total,
             (SELECT COUNT(*) FROM children 
              WHERE employee_id = ? 
              AND birth_date >= date('now', '-18 years')) AS child_count
         FROM employees e
         LEFT JOIN position_schedule ps ON e.id = ps.employee_id
-            AND ps.start_date <= ? AND (ps.end_date >= ? OR ps.end_date IS NULL)
+            AND ps.start_date <= ? 
+            AND (ps.end_date >= ? OR ps.end_date IS NULL)
         LEFT JOIN positions p ON ps.position_id = p.id
         LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
-            AND cs.start_date <= ? AND (cs.end_date >= ? OR cs.end_date IS NULL)
+            AND cs.start_date <= ? 
+            AND (cs.end_date >= ? OR cs.end_date IS NULL)
         LEFT JOIN contracts c ON cs.contract_id = c.id
         LEFT JOIN bonuses b ON e.id = b.employee_id
             AND b.date BETWEEN ? AND ?
@@ -290,18 +320,13 @@ app.get('/api/salary', (req, res) => {
         const total = row.position_income + row.contract_income + row.bonus_total;
         const taxRate = Math.max(13 - (row.child_count * 3), 0);
         const netIncome = total * (1 - taxRate / 100);
-        if (netIncome <= 0) {
-            const letter = `Уважаемый(ая) ${employeeName}, ваш заработок за ${month}-${year} составляет ${netIncome}.`;
-            res.json({ message: letter});
-        }
-        else {
+        
         res.json({
             gross: total,
             tax: total * taxRate / 100,
             net: netIncome,
             childDiscount: row.child_count * 3
-            });
-        }
+        });
     });
 });
 
@@ -355,6 +380,28 @@ app.put('/api/position-assignments/:id/terminate', (req, res) => {
     );
 });
 
+app.post('/api/contract-assignments', (req, res) => {
+    const { employee_id, contract_id, start_date, end_date } = req.body;
+
+    // Проверка данных
+    if (!employee_id || !contract_id || !start_date) {
+        return res.status(400).json({ error: "Не указаны обязательные поля" });
+    }
+
+    db.run(
+        'INSERT INTO contract_schedule (employee_id, contract_id, start_date, end_date) VALUES (?, ?, ?, ?)',
+        [employee_id, contract_id, start_date, end_date || null],
+        function (err) {
+            if (err) {
+                console.error('Ошибка SQL:', err.message); 
+                return res.status(500).json({ error: "Ошибка базы данных" });
+            }
+            res.json({ id: this.lastID });
+        }
+    );
+});
+
+
 // Similarly update contract assignments endpoint
 app.get('/api/contract-assignments/active', (req, res) => {
     const { employeeId } = req.query;
@@ -406,54 +453,108 @@ app.put('/api/fire_employee', (req, res) => {
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
     const { year } = req.query;
-
-    // Проверка параметра year
+    
+    // Validate input
     if (!year || !/^\d{4}$/.test(year)) {
-        return res.status(400).json({ error: "Неверный параметр 'year'" });
+        return res.status(400).json({ error: "Invalid year format. Use YYYY." });
     }
 
-    // Исправленный SQL-запрос
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
     const sql = `
         SELECT 
             e.id,
             e.full_name,
             COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
-            COALESCE(SUM(c.payrate), 0) AS contract_income,
+            COALESCE(
+                SUM(
+                    CASE 
+                        WHEN c.start_date = c.end_date THEN c.payrate
+                        ELSE 
+                            CASE 
+                                WHEN MAX(cs.start_date, ?) > MIN(IFNULL(cs.end_date, ?), ?) 
+                                    THEN 0 
+                                ELSE 
+                                    c.payrate * 
+                                    (
+                                        (JULIANDAY(MIN(IFNULL(cs.end_date, ?), ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1)  -- Исправлено!
+                                        / 
+                                        (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)
+                                    )
+                            END
+                    END
+                ), 0
+            ) AS contract_income,
             COALESCE(SUM(bd.value), 0) AS bonus_total,
             (SELECT COUNT(*) FROM children WHERE employee_id = e.id) AS child_count
         FROM employees e
         LEFT JOIN position_schedule ps 
             ON e.id = ps.employee_id 
-            AND strftime('%Y', ps.start_date) = ?
-        LEFT JOIN positions p 
-            ON ps.position_id = p.id
+            AND ps.start_date <= ? 
+            AND (ps.end_date >= ? OR ps.end_date IS NULL)
+        LEFT JOIN positions p ON ps.position_id = p.id
         LEFT JOIN contract_schedule cs 
             ON e.id = cs.employee_id 
-            AND strftime('%Y', cs.start_date) = ?
-        LEFT JOIN contracts c 
-            ON cs.contract_id = c.id
-        LEFT JOIN bonuses b 
-            ON e.id = b.employee_id 
-            AND strftime('%Y', b.date) = ?
-        LEFT JOIN bonuses_dict bd 
-            ON b.bonus_dict_id = bd.id
+            AND cs.start_date <= ? 
+            AND (cs.end_date >= ? OR cs.end_date IS NULL)
+        LEFT JOIN contracts c ON cs.contract_id = c.id
+        LEFT JOIN bonuses b ON e.id = b.employee_id 
+            AND b.date BETWEEN ? AND ?
+        LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
+        WHERE (e.fire_date IS NULL OR e.fire_date >= ?)
         GROUP BY e.id
     `;
 
-    db.all(sql, [year, year, year], (err, rows) => {
+    const params = [
+        // Для проверки активности контракта
+        yearStart,          // MAX(cs.start_date, ?)
+        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?)
+        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?) для расчета дней
+        yearStart,          // MAX(cs.start_date, ?) для расчета дней
+        
+        // Для position_schedule
+        yearEnd,            // ps.start_date <= ?
+        yearStart,          // ps.end_date >= ?
+        
+        // Для contract_schedule
+        yearEnd,            // cs.start_date <= ?
+        yearStart,          // cs.end_date >= ?
+        
+        // Для бонусов
+        yearStart,          // b.date >= ?
+        yearEnd,            // b.date <= ?
+        
+        // Для fire_date
+        yearStart           // e.fire_date >= ?
+    ];
+
+    db.all(sql, params, (err, rows) => {
         if (err) {
-            console.error("Ошибка SQL:", err.message);
-            return res.status(500).json({ error: "Ошибка базы данных" });
+            console.error('SQL Error:', err.message);
+            return res.status(500).json({ error: "Database error", details: err.message });
         }
 
-        // Форматирование данных
-        const report = rows.map(row => ({
-            ...row,
-            tax_rate: Math.max(13 - (row.child_count * 3), 0),
-            tax_amount: (row.position_income + row.contract_income + row.bonus_total) * (Math.max(13 - (row.child_count * 3), 0) / 100),
-            net_income: (row.position_income + row.contract_income + row.bonus_total) * (1 - Math.max(13 - (row.child_count * 3), 0) / 100)
-        }));
+        const report = rows.map(row => {
+            const total = row.position_income + row.contract_income + row.bonus_total;
+            const taxRate = Math.max(13 - (row.child_count * 3), 0);
+            const taxAmount = (total * taxRate) / 100;
+            const netIncome = total - taxAmount;
 
+            return {
+                employee_id: row.id,
+                employee_name: row.full_name,
+                position_income: row.position_income,
+                contract_income: row.contract_income,
+                bonus_total: row.bonus_total,
+                total_gross: total,
+                tax_rate: taxRate,
+                tax_amount: taxAmount,
+                net_income: netIncome,
+                child_count: row.child_count
+            };
+        });
+        //console.log("SQL:", sql.replace(/\?/g, (m) => JSON.stringify(params.shift())));
         res.json(report);
     });
 });
