@@ -1,6 +1,6 @@
 # TODO list:
- - [ ] Add counting logic to back - now it just don't count total salary, just sums salaries that was ever assigned (not even payrates are counted). Fully redo annual report, including front referencing
- - [ ] Add some letter generation (?) for employees if their monthly income is 0
+ - [x] Add counting logic to back - now it just don't count total salary, just sums salaries that was ever assigned (not even payrates are counted). Fully redo annual report, including front referencing
+ - [x] Add some letter generation (?) for employees if their monthly income is 0
  - [ ] Add some sort of testing (maybe some script that will do some api queries and check results)
  - [ ] (Optional) Add list of contracts that are available generation printing
  - [x] Add list of positions that are available generation printing
