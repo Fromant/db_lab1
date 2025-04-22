@@ -478,7 +478,7 @@ app.get('/api/reports/annual', (req, res) => {
                                 ELSE 
                                     c.payrate * 
                                     (
-                                        (JULIANDAY(MIN(IFNULL(cs.end_date, ?), ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1)  -- Исправлено!
+                                        (JULIANDAY(MIN(IFNULL(cs.end_date, ?), ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1) 
                                         / 
                                         (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)
                                     )
@@ -510,8 +510,8 @@ app.get('/api/reports/annual', (req, res) => {
         // Для проверки активности контракта
         yearStart,          // MAX(cs.start_date, ?)
         yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?)
-        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?) для расчета дней
-        yearStart,          // MAX(cs.start_date, ?) для расчета дней
+        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?) 
+        yearStart,          // MAX(cs.start_date, ?) 
         
         // Для position_schedule
         yearEnd,            // ps.start_date <= ?
