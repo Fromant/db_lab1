@@ -102,7 +102,7 @@ app.post('/api/employees', (req, res) => {
 
 app.get('/api/positions', (req, res) => {
     const doLoadAll = req.query.doLoadAll;
-    if (doLoadAll==="true") {
+    if (doLoadAll === "true") {
         db.all('SELECT title, description, payrate, max_work_rate, estimated_work_rate FROM positions', (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ rows });
@@ -174,8 +174,8 @@ app.post('/api/position-assignments', (req, res) => {
 
     // Проверяем наличие обязательных полей
     if (!employee_id || !position_id || work_rate === undefined || !start_date) {
-        return res.status(400).json({ 
-            error: "Отсутствуют обязательные поля: employee_id, position_id, work_rate, start_date" 
+        return res.status(400).json({
+            error: "Отсутствуют обязательные поля: employee_id, position_id, work_rate, start_date"
         });
     }
 
@@ -281,7 +281,7 @@ app.get('/api/search/positions', (req, res) => {
 
 app.get('/api/salary', (req, res) => {
     const { employeeId, year, month } = req.query;
-    
+
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
     const endDate = `${year}-${month.padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
 
@@ -313,21 +313,21 @@ app.get('/api/salary', (req, res) => {
             AND b.date BETWEEN ? AND ?
         LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
         WHERE e.id = ?
-    `, [endDate, startDate, employeeId, endDate, startDate, endDate, startDate, startDate, endDate, employeeId], 
-    (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        const total = row.position_income + row.contract_income + row.bonus_total;
-        const taxRate = Math.max(13 - (row.child_count * 3), 0);
-        const netIncome = total * (1 - taxRate / 100);
-        
-        res.json({
-            gross: total,
-            tax: total * taxRate / 100,
-            net: netIncome,
-            childDiscount: row.child_count * 3
+    `, [endDate, startDate, employeeId, endDate, startDate, endDate, startDate, startDate, endDate, employeeId],
+        (err, row) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            const total = row.position_income + row.contract_income + row.bonus_total;
+            const taxRate = Math.max(13 - (row.child_count * 3), 0);
+            const netIncome = total * (1 - taxRate / 100);
+
+            res.json({
+                gross: total,
+                tax: total * taxRate / 100,
+                net: netIncome,
+                childDiscount: row.child_count * 3
+            });
         });
-    });
 });
 
 app.get('/api/search/contracts', (req, res) => {
@@ -393,7 +393,7 @@ app.post('/api/contract-assignments', (req, res) => {
         [employee_id, contract_id, start_date, end_date || null],
         function (err) {
             if (err) {
-                console.error('Ошибка SQL:', err.message); 
+                console.error('Ошибка SQL:', err.message);
                 return res.status(500).json({ error: "Ошибка базы данных" });
             }
             res.json({ id: this.lastID });
@@ -453,7 +453,7 @@ app.put('/api/fire_employee', (req, res) => {
 // Annual Report
 app.get('/api/reports/annual', (req, res) => {
     const { year } = req.query;
-    
+
     // Validate input
     if (!year || !/^\d{4}$/.test(year)) {
         return res.status(400).json({ error: "Invalid year format. Use YYYY." });
@@ -512,19 +512,19 @@ app.get('/api/reports/annual', (req, res) => {
         yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?)
         yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?) 
         yearStart,          // MAX(cs.start_date, ?) 
-        
+
         // Для position_schedule
         yearEnd,            // ps.start_date <= ?
         yearStart,          // ps.end_date >= ?
-        
+
         // Для contract_schedule
         yearEnd,            // cs.start_date <= ?
         yearStart,          // cs.end_date >= ?
-        
+
         // Для бонусов
         yearStart,          // b.date >= ?
         yearEnd,            // b.date <= ?
-        
+
         // Для fire_date
         yearStart           // e.fire_date >= ?
     ];
@@ -554,9 +554,366 @@ app.get('/api/reports/annual', (req, res) => {
                 child_count: row.child_count
             };
         });
-        //console.log("SQL:", sql.replace(/\?/g, (m) => JSON.stringify(params.shift())));
         res.json(report);
     });
 });
+
+// Расчетный листок сотрудника
+app.get('/api/payslip', async (req, res) => {
+    try {
+        const { employeeId, start, end } = req.query;
+
+        // Перед выполнением запросов добавить
+        const childCheck = await db.get(
+            `SELECT COUNT(*) AS count FROM children 
+            WHERE employee_id = ? AND birth_date > ?`,
+            [employeeId, new Date().toISOString()]
+        );
+        if (childCheck.count > 0) {
+            throw new Error('Invalid child birth dates in future');
+        }
+
+        // Валидация входных параметров
+        if (!employeeId) throw new Error('Employee ID is required');
+
+        // Установка периодов по умолчанию
+        const startDate = start || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const endDate = end || new Date().toISOString().split('T')[0];
+
+        // Получение данных
+        const [employeeData, taxPeriods] = await Promise.all([
+            getEmployeeDetails(employeeId, startDate, endDate),
+            getTaxPeriods(employeeId, startDate, endDate)
+        ]);
+
+        // Расчет детализации периодов
+        const periodDetails = calculatePeriodDetails(employeeData, taxPeriods, startDate, endDate);
+
+        // Формирование результата
+        const response = {
+            full_name: employeeData.full_name,
+            positions: employeeData.positions,
+            contracts: employeeData.contracts,
+            bonuses: employeeData.bonuses,
+            tax_calculation: periodDetails,
+            totals: {
+                gross: periodDetails.total,
+                tax: periodDetails.taxTotal,
+                net: periodDetails.netTotal
+            }
+        };
+
+        res.json(response);
+
+    } catch (error) {
+        res.status(500).json({
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
+function calculatePeriodDetails(employeeData, taxPeriods, overallStart, overallEnd) {
+    const results = {
+        periods: [],
+        total: 0,
+        taxTotal: 0,
+        netTotal: 0,
+        taxRateChanges: []
+    };
+
+    // Добавляем граничные периоды если нужно
+    const fullPeriods = fillMissingPeriods(taxPeriods, overallStart, overallEnd);
+
+    fullPeriods.forEach(period => {
+        // Рассчитываем доход для периода
+        const periodIncome = calculatePeriodIncome(
+            employeeData,
+            period.period_start,
+            period.period_end
+        );
+
+        // Рассчитываем налог
+        const periodTax = periodIncome * (period.tax_rate / 100);
+
+        // Сохраняем изменения ставок
+        if (period.tax_rate !== results.currentTaxRate) {
+            results.taxRateChanges.push({
+                date: period.period_start,
+                previous_rate: results.currentTaxRate || 13,
+                new_rate: period.tax_rate,
+                triggered_by: period.change_reason
+            });
+            results.currentTaxRate = period.tax_rate;
+        }
+
+        // Аккумулируем итоги
+        results.periods.push({
+            period: `${period.period_start} - ${period.period_end}`,
+            days: daysBetween(period.period_start, period.period_end),
+            child_count: period.child_count,
+            tax_rate: period.tax_rate,
+            income: periodIncome,
+            tax: periodTax
+        });
+
+        results.total += periodIncome;
+        results.taxTotal += periodTax;
+    });
+
+    results.netTotal = results.total - results.taxTotal;
+    return results;
+}
+
+// Вспомогательные функции
+function fillMissingPeriods(periods, overallStart, overallEnd) {
+    const filled = [];
+    let lastEnd = overallStart;
+
+    periods.forEach(p => {
+        if (p.period_start > lastEnd) {
+            filled.push(createFallbackPeriod(lastEnd, p.period_start));
+        }
+        filled.push(p);
+        lastEnd = p.period_end;
+    });
+
+    if (lastEnd < overallEnd) {
+        filled.push(createFallbackPeriod(lastEnd, overallEnd));
+    }
+
+    return filled;
+}
+
+function createFallbackPeriod(start, end) {
+    return {
+        period_start: start,
+        period_end: end,
+        child_count: 0,
+        tax_rate: 13,
+        change_reason: 'no children'
+    };
+}
+
+function calculatePeriodIncome(data, periodStart, periodEnd) {
+    const periodStartDate = new Date(periodStart);
+    const periodEndDate = new Date(periodEnd);
+
+    // Расчет по должностям
+    const positionIncome = data.positions.reduce((sum, pos) => {
+        const posStart = new Date(pos.start);
+        const posEnd = pos.end ? new Date(pos.end) : new Date(8640000000000000);
+
+        const overlapStart = new Date(Math.max(posStart, periodStartDate));
+        const overlapEnd = new Date(Math.min(posEnd, periodEndDate));
+
+        if (overlapStart >= overlapEnd) return sum;
+
+        const days = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24);
+        return sum + days * pos.rate * pos.work_rate / 30;
+    }, 0);
+
+    // Расчет по контрактам
+    const contractIncome = data.contracts.reduce((sum, con) => {
+        const conStart = new Date(con.start);
+        const conEnd = con.end ? new Date(con.end) : new Date(8640000000000000);
+
+        const overlapStart = new Date(Math.max(conStart, periodStartDate));
+        const overlapEnd = new Date(Math.min(conEnd, periodEndDate));
+
+        if (overlapStart >= overlapEnd) return sum;
+
+        const days = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24);
+        return sum + days * con.rate / 30;
+    }, 0);
+
+    // Бонусы/штрафы
+    const bonuses = data.bonuses
+        .filter(b => {
+            const bonusDate = new Date(b.date);
+            return bonusDate >= periodStartDate && bonusDate <= periodEndDate;
+        })
+        .reduce((sum, b) => sum + b.amount, 0);
+
+    return positionIncome + contractIncome + bonuses;
+}
+
+function daysBetween(start, end) {
+    return Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function isDateInPeriod(date, start, end) {
+    const d = new Date(date);
+    return d >= new Date(start) && d <= new Date(end);
+}
+
+async function getTaxPeriods(employeeId, startDate, endDate) {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            WITH child_periods AS (
+                SELECT 
+                    c.employee_id,
+                    c.birth_date,
+                    MAX(c.birth_date, ?) AS period_start,
+                    MIN(DATE(c.birth_date, '+18 years'), ?) AS period_end
+                FROM children c
+                WHERE c.employee_id = ?
+                    AND c.birth_date <= ?
+            ),
+            tax_calendar AS (
+                SELECT 
+                    period_start AS date,
+                    1 AS is_start
+                FROM child_periods
+                UNION ALL
+                SELECT 
+                    period_end AS date,
+                    0 AS is_start
+                FROM child_periods
+            ),
+            periods AS (
+                SELECT
+                    date,
+                    SUM(CASE WHEN is_start THEN 1 ELSE -1 END) 
+                        OVER (ORDER BY date) AS child_count
+                FROM tax_calendar
+                WHERE date BETWEEN ? AND ?
+            )
+            SELECT
+                date AS period_date,
+                child_count,
+                13 - (child_count * 3) AS tax_rate
+            FROM periods
+            ORDER BY period_date
+        `, [
+            startDate, endDate,
+            employeeId, endDate,
+            startDate, endDate
+        ], (err, rows) => {
+            if (err) return reject(err);
+
+            const processed = processPeriods(rows, startDate, endDate);
+            resolve(processed);
+        });
+    });
+}
+
+function processPeriods(rows, start, end) {
+    const periods = [];
+    let current = { start, child_count: 0, tax_rate: 13 };
+
+    rows.forEach(row => {
+        if (row.period_date > current.start) {
+            periods.push({
+                period_start: current.start,
+                period_end: row.period_date,
+                child_count: current.child_count,
+                tax_rate: current.tax_rate
+            });
+            current.start = row.period_date;
+        }
+        current.child_count = row.child_count;
+        current.tax_rate = 13 - (row.child_count * 3);
+    });
+
+    if (current.start < end) {
+        periods.push({
+            period_start: current.start,
+            period_end: end,
+            child_count: current.child_count,
+            tax_rate: current.tax_rate
+        });
+    }
+
+    return periods.filter(p => p.period_start < p.period_end);
+}
+
+// Получаем данные по должностям
+async function getPositions(employeeId, start, end) {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT 
+                p.title,
+                p.payrate AS rate,
+                ps.work_rate,
+                MAX(?, ps.start_date) AS start,
+                MIN(COALESCE(ps.end_date, ?),?) AS end,
+                ROUND((JULIANDAY(MIN(COALESCE(ps.end_date, ?),?))-JULIANDAY(MAX(?, ps.start_date))+1)
+                 * p.payrate * ps.work_rate / 30, 2) AS amount
+            FROM position_schedule ps
+            JOIN positions p ON ps.position_id = p.id
+            WHERE ps.employee_id = ?
+                AND ps.start_date <= ?
+                AND (ps.end_date >= ? OR ps.end_date IS NULL)
+            ORDER BY ps.start_date
+        `, [start, end, end, end, end, start, employeeId, end, start], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows.map(row => ({ ...row, type: 'position' })));
+        });
+    });
+}
+
+// Получаем данные по контрактам
+async function getContracts(employeeId, start, end) {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT 
+                c.description AS title,
+                c.payrate AS rate,
+                JULIANDAY(MAX(?, cs.start_date)) AS start,
+                JULIANDAY(MIN(COALESCE(cs.end_date, ?),?)) AS end,
+                ROUND(
+                (JULIANDAY(MIN(COALESCE(cs.end_date, ?),?))-JULIANDAY(MAX(?, cs.start_date))+1)
+                 * c.payrate / 30, 
+                2) AS amount
+            FROM contract_schedule cs
+            JOIN contracts c ON cs.contract_id = c.id
+            WHERE cs.employee_id = ?
+                AND cs.start_date <= ?
+                AND (cs.end_date >= ? OR cs.end_date IS NULL)
+            ORDER BY cs.start_date
+        `, [start, end, end, end, end, start, employeeId, end, start], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows.map(row => ({ ...row, type: 'contract' })));
+        });
+    });
+}
+
+// Получаем данные по бонусам
+async function getBonuses(employeeId, start, end) {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT 
+                bd.description AS title,
+                b.date,
+                bd.value AS amount
+            FROM bonuses b
+            JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
+            WHERE b.employee_id = ?
+                AND b.date BETWEEN ? AND ?
+            ORDER BY b.date
+        `, [employeeId, start, end], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows.map(row => ({ ...row, type: 'bonus' })));
+        });
+    });
+}
+
+async function getEmployeeDetails(employeeId, start, end) {
+    return new Promise((resolve, reject) => {
+        db.get(`
+            SELECT full_name, hire_date FROM employees WHERE id=?
+        `, [employeeId],
+            async (err, rows) => {
+                if (err) reject(err);
+                else resolve({
+                    ...rows,
+                    positions: await getPositions(employeeId, start, end),
+                    contracts: await getContracts(employeeId, start, end),
+                    bonuses: await getBonuses(employeeId, start, end)
+                });
+            });
+    });
+}
 
 app.listen(3000, () => console.log('Server running on http://localhost:3000'));

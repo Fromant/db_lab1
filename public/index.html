@@ -23,6 +23,7 @@
         <option value="contractAssignment">Contract Assignment</option>
         <option value="bonusAssignment">Bonus Assignment</option>
         <option value="termination">Terminate Assignments</option>
+        <option value="payslip">Расчетный листок</option>
 
     </select>
 
@@ -177,6 +178,17 @@
             </div>
 
             <div id="positions_loaded"></div>
+        </div>
+
+        <div id="payslipForm" class="form-section" style="display: none;">
+            <h2>Расчетный листок</h2>
+            <div class="autocomplete">
+                <input type="text" id="payslipEmployee" placeholder="Сотрудник" class="employee-search">
+            </div>
+            <input type="date" id="payslipStart">
+            <input type="date" id="payslipEnd">
+            <button onclick="generatePayslip()">Сформировать</button>
+            <div id="payslipResult"></div>
         </div>
     </div>
 

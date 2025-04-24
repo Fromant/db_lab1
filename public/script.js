@@ -17,7 +17,7 @@ function setupAutocomplete(input, endpoint, displayField) {
             // Запрос к API
             const response = await fetch(`/api/search/${endpoint}?term=${term}`);
             if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
-            
+
             const data = await response.json();
             if (!data.length) return; // Нет данных
 
@@ -32,7 +32,7 @@ function setupAutocomplete(input, endpoint, displayField) {
                 div.dataset.id = item.id;
                 div.onclick = () => {
                     input.value = item[displayField];
-                    input.dataset.selectedId = item.id.toString(); 
+                    input.dataset.selectedId = item.id.toString();
                     console.log('Выбрано:', item.id, item[displayField]);
                     list.remove();
                 };
@@ -448,9 +448,9 @@ async function calculateSalary() {
     try {
         const response = await fetch(`/api/salary?employeeId=${employeeId}&year=${year}&month=${month}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
+
         const data = await response.json();
-        
+
         const formatValue = (value) => {
             return value === 0 ? 'No income' : `$${value.toFixed(2)}`;
         };
@@ -482,7 +482,7 @@ async function calculateSalary() {
 // Report Generation
 async function generateReport() {
     const year = document.getElementById('reportYear').value;
-    
+
     if (!year || !/^\d{4}$/.test(year)) {
         alert("Please enter a valid year in YYYY format");
         return;
@@ -491,9 +491,9 @@ async function generateReport() {
     try {
         const response = await fetch(`/api/reports/annual?year=${year}`);
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
-        
+
         const reportData = await response.json();
-        
+
         const formatIncome = (value) => {
             return value === 0 ? 'No income' : `$${value.toFixed(2)}`;
         };
@@ -517,7 +517,7 @@ async function generateReport() {
                         <td>${formatIncome(emp.contract_income)}</td>
                         <td>${formatIncome(emp.bonus_total)}</td>
                         <td>${emp.child_count || 0}</td>
-                        <td>${emp.tax_rate || 0}%</td>
+                        <td>${emp.tax_amount || 0}%</td>
                         <td>${emp.tax_amount === 0 ? 'No tax' : `$${emp.tax_amount.toFixed(2)}`}</td>
                         <td>${formatIncome(emp.net_income)}</td>
                     </tr>
@@ -528,7 +528,7 @@ async function generateReport() {
         document.getElementById('reportResults').innerHTML = html;
 
     } catch (error) {
-        document.getElementById('reportResults').innerHTML = 
+        document.getElementById('reportResults').innerHTML =
             `<p class="error">Error: ${error.message}</p>`;
     }
 }
@@ -537,3 +537,130 @@ document.addEventListener("keydown", (event) => {
     const keyName = event.key;
     if (keyName === "Escape") document.querySelectorAll('.autocomplete-item').forEach(el => el.remove());
 })
+
+async function generatePayslip() {
+    const employeeId = document.getElementById('payslipEmployee').dataset.selectedId;
+    const start = document.getElementById('payslipStart').value;
+    const end = document.getElementById('payslipEnd').value;
+
+    if (!employeeId) {
+        alert('Заполните поле сотрудника!');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/payslip?employeeId=${employeeId}&start=${start}&end=${end}`);
+        const data = await response.json();
+
+        const periodDetails = data.tax_calculation
+
+        const html = `
+            <div class="payslip-section">
+                <h3>Сотрудник: ${data.full_name}</h3>
+                <p>Период: ${start} - ${end}</p>
+
+                <h4>Основные доходы</h4>
+                ${renderIncomeTable(data.positions)}
+
+                <h4>Контракты</h4>
+                ${renderIncomeTable(data.contracts)}
+
+                <h4>Бонусы/Штрафы</h4>
+                ${renderBonuses(data.bonuses)}
+
+
+                <div class="total-block">
+                    <h4>Детализация налоговых периодов</h4>
+                    ${renderTaxPeriods(periodDetails)}
+                    <h4>Итоговый расчет</h4>
+                    <p>Общий доход: $${data.totals.gross.toFixed(2)}</p>
+                    <p>Общий налог: $${data.totals.tax.toFixed(2)}</p>
+                    <h3>Чистая выплата: $${data.totals.net.toFixed(2)}</h3>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('payslipResult').innerHTML = html;
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+function renderTaxPeriods(periodDetails) {
+    return `
+        <table class="payslip-table">
+            <tr>
+                <th>Период</th>
+                <th>Детей</th>
+                <th>Ставка</th>
+                <th>Доход</th>
+                <th>Налог</th>
+            </tr>
+            ${periodDetails.periods.map(p => `
+                <tr>
+                    <td>${p.period}</td>
+                    <td>${p.child_count}</td>
+                    <td>${p.tax_rate}%</td>
+                    <td>$${p.income.toFixed(2)}</td>
+                    <td>$${p.tax.toFixed(2)}</td>
+                </tr>
+            `).join('')}
+        </table>
+    `;
+}
+
+function renderIncomeTable(items) {
+    if (items.length === 0) return '<p>Нет данных</p>';
+
+    return `
+        <table class="payslip-table">
+            <tr>
+                <th>Тип</th>
+                <th>Название</th>
+                <th>Ставка</th>
+                <th>Период</th>
+                <th>Сумма</th>
+            </tr>
+            ${items.map(item => `
+                <tr>
+                    <td>${item.type === 'position' ? 'Должность' : 'Контракт'}</td>
+                    <td>${item.title}</td>
+                    <td>$${item.rate.toFixed(2)}</td>
+                    <td>${item.start} - ${item.end || 'н.в.'}</td>
+                    <td>$${item.amount.toFixed(2)}</td>
+                </tr>
+            `).join('')}
+        </table>
+    `;
+}
+
+function renderBonuses(bonuses) {
+    if (bonuses.length === 0) return '<p>Нет данных</p>';
+
+    return `
+        <table class="payslip-table">
+            <tr>
+                <th>Описание</th>
+                <th>Дата</th>
+                <th>Сумма</th>
+            </tr>
+            ${bonuses.map(b => `
+                <tr>
+                    <td>${b.title}</td>
+                    <td>${b.date}</td>
+                    <td class="${b.amount < 0 ? 'negative' : ''}">
+                        $${b.amount.toFixed(2)}
+                    </td>
+                </tr>
+            `).join('')}
+        </table>
+    `;
+}
+
+function calculateTotal(data) {
+    return [
+        ...data.positions.map(i => i.amount),
+        ...data.contracts.map(c => c.amount),
+        ...data.bonuses.map(b => b.amount)
+    ].reduce((sum, val) => sum + val, 0);
+}
