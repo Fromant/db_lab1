@@ -8,3 +8,5 @@
  - [x] Add employee firing logic
  - [x] Split frontend to script and style files
  - [x] Add firing logic - now employees can quit from contracts and positions
+ - [x] Add payslip
+ - [ ] Fix bugs

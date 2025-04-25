@@ -23,7 +23,6 @@
         <option value="contractAssignment">Contract Assignment</option>
         <option value="bonusAssignment">Bonus Assignment</option>
         <option value="termination">Terminate Assignments</option>
-        <option value="payslip">Расчетный листок</option>
 
     </select>
 
@@ -180,28 +179,18 @@
             <div id="positions_loaded"></div>
         </div>
 
-        <div id="payslipForm" class="form-section" style="display: none;">
-            <h2>Расчетный листок</h2>
-            <div class="autocomplete">
-                <input type="text" id="payslipEmployee" placeholder="Сотрудник" class="employee-search">
-            </div>
-            <input type="date" id="payslipStart">
-            <input type="date" id="payslipEnd">
-            <button onclick="generatePayslip()">Сформировать</button>
-            <div id="payslipResult"></div>
-        </div>
     </div>
 
      <!-- Salary Section -->
      <div class="section">
-        <h2>Monthly Salary Calculator</h2>
-        <div class="form-group">
-            <input type="text" id="salaryEmployeeName" placeholder="Employee Name" class="employee-search">
-            <input type="number" id="salaryYear" placeholder="Year (e.g. 2025)" min="2000" max="2100" required>
-            <input type="number" id="salaryMonth" placeholder="Month (1-12)" min="1" max="12" required>
-            <button onclick="calculateSalary()">Calculate Salary</button>
+        <h2>Расчетный листок</h2>
+        <div class="autocomplete">
+            <input type="text" id="payslipEmployee" placeholder="Сотрудник" class="employee-search">
         </div>
-        <div id="salaryResult" class="result-container"></div>
+        <input type="date" id="payslipStart">
+        <input type="date" id="payslipEnd">
+        <button onclick="generatePayslip()">Сформировать</button>
+        <div id="payslipResult"></div>
     </div>
 
     <!-- Reports Section -->

@@ -563,18 +563,8 @@ app.get('/api/payslip', async (req, res) => {
     try {
         const { employeeId, start, end } = req.query;
 
-        // Перед выполнением запросов добавить
-        const childCheck = await db.get(
-            `SELECT COUNT(*) AS count FROM children 
-            WHERE employee_id = ? AND birth_date > ?`,
-            [employeeId, new Date().toISOString()]
-        );
-        if (childCheck.count > 0) {
-            throw new Error('Invalid child birth dates in future');
-        }
-
         // Валидация входных параметров
-        if (!employeeId) throw new Error('Employee ID is required');
+        if (!employeeId) throw new Error('Employee ID, start and end dates are required');
 
         // Установка периодов по умолчанию
         const startDate = start || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
