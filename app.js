@@ -466,68 +466,80 @@ app.get('/api/reports/annual', (req, res) => {
         SELECT 
             e.id,
             e.full_name,
-            COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
             COALESCE(
                 SUM(
-                    CASE 
-                        WHEN c.start_date = c.end_date THEN c.payrate
-                        ELSE 
-                            CASE 
-                                WHEN MAX(cs.start_date, ?) > MIN(IFNULL(cs.end_date, ?), ?) 
-                                    THEN 0 
-                                ELSE 
-                                    c.payrate * 
-                                    (
-                                        (JULIANDAY(MIN(IFNULL(cs.end_date, ?), ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1) 
-                                        / 
-                                        (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)
-                                    )
-                            END
-                    END
+                    p.payrate * ps.work_rate * 
+                    (
+                        (JULIANDAY(IFNULL(ps.end_date, ?)) - 
+                        JULIANDAY(IFNULL(ps.start_date, ?)) + 1) 
+                        / 30
+                    )
+                ), 0
+            ) AS position_income,
+            COALESCE(
+                SUM(
+                    c.payrate * 
+                    (
+                        (JULIANDAY(IFNULL(cs.end_date, ?)) - 
+                        JULIANDAY(IFNULL(cs.start_date, ?)) + 1) 
+                        / 30
+                    )
                 ), 0
             ) AS contract_income,
             COALESCE(SUM(bd.value), 0) AS bonus_total,
-            (SELECT COUNT(*) FROM children WHERE employee_id = e.id) AS child_count
+            (
+                SELECT COUNT(*) 
+                FROM children c 
+                WHERE 
+                    c.employee_id = e.id AND 
+                    c.birth_date >= DATE('now', '-18 years')
+            ) AS child_count
         FROM employees e
-        LEFT JOIN position_schedule ps 
-            ON e.id = ps.employee_id 
-            AND ps.start_date <= ? 
-            AND (ps.end_date >= ? OR ps.end_date IS NULL)
+        LEFT JOIN (
+            SELECT * 
+            FROM position_schedule 
+            WHERE 
+                start_date <= ? AND 
+                (end_date >= ? OR end_date IS NULL)
+        ) ps ON e.id = ps.employee_id
         LEFT JOIN positions p ON ps.position_id = p.id
-        LEFT JOIN contract_schedule cs 
-            ON e.id = cs.employee_id 
-            AND cs.start_date <= ? 
-            AND (cs.end_date >= ? OR cs.end_date IS NULL)
+        LEFT JOIN (
+            SELECT * 
+            FROM contract_schedule 
+            WHERE 
+                start_date <= ? AND 
+                (end_date >= ? OR end_date IS NULL)
+        ) cs ON e.id = cs.employee_id
         LEFT JOIN contracts c ON cs.contract_id = c.id
-        LEFT JOIN bonuses b ON e.id = b.employee_id 
-            AND b.date BETWEEN ? AND ?
+        LEFT JOIN bonuses b ON 
+            e.id = b.employee_id AND 
+            b.date BETWEEN ? AND ?
         LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
-        WHERE (e.fire_date IS NULL OR e.fire_date >= ?)
+        WHERE 
+            (e.fire_date IS NULL OR e.fire_date >= ?)
         GROUP BY e.id
     `;
-
+    
     const params = [
-        // Для проверки активности контракта
-        yearStart,          // MAX(cs.start_date, ?)
-        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?)
-        yearEnd, yearEnd,   // MIN(IFNULL(cs.end_date, ?), ?) 
-        yearStart,          // MAX(cs.start_date, ?) 
-
-        // Для position_schedule
-        yearEnd,            // ps.start_date <= ?
-        yearStart,          // ps.end_date >= ?
-
-        // Для contract_schedule
-        yearEnd,            // cs.start_date <= ?
-        yearStart,          // cs.end_date >= ?
-
-        // Для бонусов
-        yearStart,          // b.date >= ?
-        yearEnd,            // b.date <= ?
-
-        // Для fire_date
-        yearStart           // e.fire_date >= ?
+        // Для IFNULL(ps.end_date) и IFNULL(ps.start_date)
+        yearEnd, yearStart,
+        
+        // Для IFNULL(cs.end_date) и IFNULL(cs.start_date)
+        yearEnd, yearStart,
+        
+        // Условия для position_schedule (start_date <= ? AND end_date >= ?)
+        yearEnd, yearStart,
+        
+        // Условия для contract_schedule (start_date <= ? AND end_date >= ?)
+        yearEnd, yearStart,
+        
+        // Бонусы (BETWEEN ? AND ?)
+        yearStart, yearEnd,
+        
+        // Условие для fire_date
+        yearStart
     ];
+
 
     db.all(sql, params, (err, rows) => {
         if (err) {
