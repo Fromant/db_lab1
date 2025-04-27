@@ -626,12 +626,22 @@ function renderIncomeTable(items) {
                     <td>${item.type === 'position' ? 'Должность' : 'Контракт'}</td>
                     <td>${item.title}</td>
                     <td>$${item.rate.toFixed(2)}</td>
-                    <td>${item.start} - ${item.end || 'н.в.'}</td>
+                    <td>
+                        ${formatDate(item.start)} - 
+                        ${item.end ? formatDate(item.end) : 'н.в.'}
+                    </td>
                     <td>$${item.amount.toFixed(2)}</td>
                 </tr>
             `).join('')}
         </table>
     `;
+}
+
+// Новая функция форматирования даты
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU'); // Формат DD.MM.YYYY
 }
 
 function renderBonuses(bonuses) {

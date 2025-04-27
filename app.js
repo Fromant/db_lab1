@@ -558,7 +558,6 @@ app.get('/api/reports/annual', (req, res) => {
     });
 });
 
-// Расчетный листок сотрудника
 app.get('/api/payslip', async (req, res) => {
     try {
         const { employeeId, start, end } = req.query;
@@ -580,6 +579,12 @@ app.get('/api/payslip', async (req, res) => {
         const periodDetails = calculatePeriodDetails(employeeData, taxPeriods, startDate, endDate);
 
         // Формирование результата
+        const totalGross = [
+            ...employeeData.positions.map(p => p.amount),
+            ...employeeData.contracts.map(c => c.amount),
+            ...employeeData.bonuses.map(b => b.amount)
+        ].reduce((sum, val) => sum + val, 0);
+
         const response = {
             full_name: employeeData.full_name,
             positions: employeeData.positions,
@@ -587,11 +592,12 @@ app.get('/api/payslip', async (req, res) => {
             bonuses: employeeData.bonuses,
             tax_calculation: periodDetails,
             totals: {
-                gross: periodDetails.total,
+                gross: totalGross, // Исправлено - учитываем все компоненты
                 tax: periodDetails.taxTotal,
-                net: periodDetails.netTotal
+                net: totalGross - periodDetails.taxTotal
             }
         };
+
 
         res.json(response);
 
@@ -714,7 +720,7 @@ function calculatePeriodIncome(data, periodStart, periodEnd) {
         if (overlapStart >= overlapEnd) return sum;
 
         const days = (overlapEnd - overlapStart) / (1000 * 60 * 60 * 24);
-        return sum + days * con.rate / 30;
+        return sum + days * con.rate / 30; // Убедитесь, что это правильный расчет
     }, 0);
 
     // Бонусы/штрафы
@@ -725,8 +731,9 @@ function calculatePeriodIncome(data, periodStart, periodEnd) {
         })
         .reduce((sum, b) => sum + b.amount, 0);
 
-    return positionIncome + contractIncome + bonuses;
+    return positionIncome + contractIncome + bonuses; // Убедитесь, что все доходы учитываются
 }
+
 
 function daysBetween(start, end) {
     return Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
@@ -850,10 +857,10 @@ async function getContracts(employeeId, start, end) {
             SELECT 
                 c.description AS title,
                 c.payrate AS rate,
-                JULIANDAY(MAX(?, cs.start_date)) AS start,
-                JULIANDAY(MIN(COALESCE(cs.end_date, ?),?)) AS end,
+                MAX(?, cs.start_date) AS start,
+                MIN(COALESCE(cs.end_date, ?), ?) AS end,
                 ROUND(
-                (JULIANDAY(MIN(COALESCE(cs.end_date, ?),?))-JULIANDAY(MAX(?, cs.start_date))+1)
+                (JULIANDAY(MIN(COALESCE(cs.end_date, ?), ?)) - JULIANDAY(MAX(?, cs.start_date)) + 1)
                  * c.payrate / 30, 
                 2) AS amount
             FROM contract_schedule cs
@@ -861,6 +868,7 @@ async function getContracts(employeeId, start, end) {
             WHERE cs.employee_id = ?
                 AND cs.start_date <= ?
                 AND (cs.end_date >= ? OR cs.end_date IS NULL)
+            GROUP BY c.id
             ORDER BY cs.start_date
         `, [start, end, end, end, end, start, employeeId, end, start], (err, rows) => {
             if (err) reject(err);
