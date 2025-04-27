@@ -501,24 +501,16 @@ async function generateReport() {
         const html = `
             <table class="report-table">
                 <tr>
-                    <th>Employee</th>
-                    <th>Position Income</th>
-                    <th>Contract Income</th>
-                    <th>Bonuses</th>
-                    <th>Children</th>
-                    <th>Tax Rate</th>
-                    <th>Tax Amount</th>
-                    <th>Net Income</th>
+                    <th>Имя</th>
+                    <th>Доход до вычетов</th>
+                    <th>Вычеты</th>
+                    <th>Доход после вычетов</th>
                 </tr>
                 ${reportData.map(emp => `
                     <tr>
-                        <td>${emp.employee_name || 'Unknown'}</td>
-                        <td>${formatIncome(emp.position_income)}</td>
-                        <td>${formatIncome(emp.contract_income)}</td>
-                        <td>${formatIncome(emp.bonus_total)}</td>
-                        <td>${emp.child_count || 0}</td>
-                        <td>${emp.tax_amount || 0}%</td>
-                        <td>${emp.tax_amount === 0 ? 'No tax' : `$${emp.tax_amount.toFixed(2)}`}</td>
+                        <td>${emp.employee_name || 'Неизвестно'}</td>
+                        <td>${formatIncome(emp.gross_income)}</td>
+                        <td>${emp.tax_amount === 0 ? 'Нет вычетов' : `${emp.tax_amount.toFixed(2)}`}</td>
                         <td>${formatIncome(emp.net_income)}</td>
                     </tr>
                 `).join('')}

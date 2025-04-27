@@ -78,7 +78,7 @@ button {
 .report-table td:nth-child(2),
 .report-table td:nth-child(3),
 .report-table td:nth-child(4) {
-    text-align: right;
+    text-align: middle;
 }
 
 .no-income {

@@ -540,18 +540,12 @@ app.get('/api/reports/annual', (req, res) => {
             const taxRate = Math.max(13 - (row.child_count * 3), 0);
             const taxAmount = (total * taxRate) / 100;
             const netIncome = total - taxAmount;
-
+        
             return {
-                employee_id: row.id,
                 employee_name: row.full_name,
-                position_income: row.position_income,
-                contract_income: row.contract_income,
-                bonus_total: row.bonus_total,
-                total_gross: total,
-                tax_rate: taxRate,
+                gross_income: total,
                 tax_amount: taxAmount,
-                net_income: netIncome,
-                child_count: row.child_count
+                net_income: netIncome
             };
         });
         res.json(report);
@@ -580,11 +574,10 @@ app.get('/api/payslip', async (req, res) => {
 
         // Формирование результата
         const totalGross = [
-            ...employeeData.positions.map(p => p.amount),
-            ...employeeData.contracts.map(c => c.amount),
-            ...employeeData.bonuses.map(b => b.amount)
+            ...employeeData.positions.map(p => parseFloat(p.amount.toFixed(2))),
+            ...employeeData.contracts.map(c => parseFloat(c.amount.toFixed(2))),
+            ...employeeData.bonuses.map(b => parseFloat(b.amount.toFixed(2)))
         ].reduce((sum, val) => sum + val, 0);
-
         const response = {
             full_name: employeeData.full_name,
             positions: employeeData.positions,
