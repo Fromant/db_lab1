@@ -279,57 +279,6 @@ app.get('/api/search/positions', (req, res) => {
     });
 });
 
-app.get('/api/salary', (req, res) => {
-    const { employeeId, year, month } = req.query;
-
-    const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const endDate = `${year}-${month.padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
-
-    db.get(`
-        SELECT 
-            COALESCE(SUM(p.payrate * ps.work_rate), 0) AS position_income,
-            COALESCE(SUM(
-                c.payrate * 
-                (
-                    (JULIANDAY(MIN(cs.end_date, ?)) - JULIANDAY(MAX(cs.start_date, ?)) + 1) 
-                    / 
-                    (JULIANDAY(c.end_date) - JULIANDAY(c.start_date) + 1)
-                )
-            ), 0) AS contract_income,
-            COALESCE(SUM(bd.value), 0) AS bonus_total,
-            (SELECT COUNT(*) FROM children 
-             WHERE employee_id = ? 
-             AND birth_date >= date('now', '-18 years')) AS child_count
-        FROM employees e
-        LEFT JOIN position_schedule ps ON e.id = ps.employee_id
-            AND ps.start_date <= ? 
-            AND (ps.end_date >= ? OR ps.end_date IS NULL)
-        LEFT JOIN positions p ON ps.position_id = p.id
-        LEFT JOIN contract_schedule cs ON e.id = cs.employee_id
-            AND cs.start_date <= ? 
-            AND (cs.end_date >= ? OR cs.end_date IS NULL)
-        LEFT JOIN contracts c ON cs.contract_id = c.id
-        LEFT JOIN bonuses b ON e.id = b.employee_id
-            AND b.date BETWEEN ? AND ?
-        LEFT JOIN bonuses_dict bd ON b.bonus_dict_id = bd.id
-        WHERE e.id = ?
-    `, [endDate, startDate, employeeId, endDate, startDate, endDate, startDate, startDate, endDate, employeeId],
-        (err, row) => {
-            if (err) return res.status(500).json({ error: err.message });
-
-            const total = row.position_income + row.contract_income + row.bonus_total;
-            const taxRate = Math.max(13 - (row.child_count * 3), 0);
-            const netIncome = total * (1 - taxRate / 100);
-
-            res.json({
-                gross: total,
-                tax: total * taxRate / 100,
-                net: netIncome,
-                childDiscount: row.child_count * 3
-            });
-        });
-});
-
 app.get('/api/search/contracts', (req, res) => {
     db.all('SELECT id, description FROM contracts', (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -492,7 +441,7 @@ app.get('/api/reports/annual', (req, res) => {
                 FROM children c 
                 WHERE 
                     c.employee_id = e.id AND 
-                    c.birth_date >= DATE('now', '-18 years')
+                    c.birth_date > DATE(?, '-18 years')  
             ) AS child_count
         FROM employees e
         LEFT JOIN (
@@ -526,6 +475,8 @@ app.get('/api/reports/annual', (req, res) => {
         
         // Для IFNULL(cs.end_date) и IFNULL(cs.start_date)
         yearEnd, yearStart,
+
+        yearEnd,
         
         // Условия для position_schedule (start_date <= ? AND end_date >= ?)
         yearEnd, yearStart,
@@ -623,6 +574,14 @@ function calculatePeriodDetails(employeeData, taxPeriods, overallStart, overallE
         taxRateChanges: []
     };
 
+    // const cutoffDate = new Date(overallEnd);
+    // cutoffDate.setFullYear(cutoffDate.getFullYear() - 18);
+    
+    // // Учитываем детей, родившихся ПОСЛЕ (конец периода - 18 лет)
+    // const childCount = employeeData.children
+    //     .filter(c => new Date(c.birth_date) > cutoffDate)
+    //     .length;
+
     // Добавляем граничные периоды если нужно
     const fullPeriods = fillMissingPeriods(taxPeriods, overallStart, overallEnd);
 
@@ -699,7 +658,7 @@ function createFallbackPeriod(start, end) {
 function calculatePeriodIncome(data, periodStart, periodEnd) {
     const periodStartDate = new Date(periodStart);
     const periodEndDate = new Date(periodEnd);
-
+    
     // Расчет по должностям
     const positionIncome = data.positions.reduce((sum, pos) => {
         const posStart = new Date(pos.start);
@@ -752,7 +711,7 @@ function isDateInPeriod(date, start, end) {
 async function getTaxPeriods(employeeId, startDate, endDate) {
     return new Promise((resolve, reject) => {
         db.all(`
-            WITH child_periods AS (
+             WITH child_periods AS (
                 SELECT 
                     c.employee_id,
                     c.birth_date,
@@ -760,7 +719,7 @@ async function getTaxPeriods(employeeId, startDate, endDate) {
                     MIN(DATE(c.birth_date, '+18 years'), ?) AS period_end
                 FROM children c
                 WHERE c.employee_id = ?
-                    AND c.birth_date <= ?
+                    AND c.birth_date > DATE(?, '-18 years') 
             ),
             tax_calendar AS (
                 SELECT 
