@@ -184,40 +184,64 @@ app.post('/api/position-assignments', (req, res) => {
         return res.status(400).json({ error: "work_rate должен быть числом" });
     }
 
-    // Проверяем текущую нагрузку сотрудника
-    db.get(
-        `SELECT SUM(work_rate) AS total 
-         FROM position_schedule 
-         WHERE employee_id = ? 
-         AND (end_date IS NULL OR end_date > DATE('now'))`,
-        [employee_id],
-        (err, row) => {
-            if (err) {
-                console.error('Ошибка при проверке нагрузки:', err.message);
-                return res.status(500).json({ error: "Внутренняя ошибка сервера" });
-            }
+    // Проверяем вакантый work_rate
+    db.get('SELECT estimated_work_rate FROM positions WHERE id = ?', [position_id], (err, row) => {
+        if (err) {
+            console.error('Ошибка при проверке нагрузки:', err.message);
+            return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+        }
 
-            const totalWorkRate = (row?.total || 0) + work_rate;
-            if (totalWorkRate > 1.5) {
-                return res.status(400).json({ error: "Общая нагрузка превышает 1.5" });
-            }
+        const estimated_work_rate = (row?.estimated_work_rate || 0)
+        if (work_rate > estimated_work_rate) {
+            return res.status(400).json({ error: `Назначаемая рабочая ставка превышает оставшееся количество рабочих ставок. Осталось: ${estimated_work_rate}` })
+        }
 
-            // Создаем новое назначение
-            db.run(
-                `INSERT INTO position_schedule 
+        // Проверяем текущую нагрузку сотрудника
+        db.get(
+            `SELECT SUM(work_rate) AS total 
+             FROM position_schedule 
+             WHERE employee_id = ? 
+             AND (end_date IS NULL OR end_date > DATE('now'))`,
+            [employee_id],
+            (err, row) => {
+                if (err) {
+                    console.error('Ошибка при проверке нагрузки:', err.message);
+                    return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+                }
+
+                const totalWorkRate = (row?.total || 0) + work_rate;
+                if (totalWorkRate > 1.5) {
+                    return res.status(400).json({ error: "Общая нагрузка превышает 1.5" });
+                }
+
+                // Создаем новое назначение
+                db.run(
+                    `INSERT INTO position_schedule 
                  (employee_id, position_id, work_rate, start_date, end_date) 
                  VALUES (?, ?, ?, ?, ?)`,
-                [employee_id, position_id, work_rate, start_date, end_date || null],
-                function (err) {
-                    if (err) {
-                        console.error('Ошибка при создании назначения:', err.message);
-                        return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+                    [employee_id, position_id, work_rate, start_date, end_date || null],
+                    function (err) {
+                        if (err) {
+                            console.error('Ошибка при создании назначения:', err.message);
+                            return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+                        }
+                        const id = this.lastID
+                        //Обновляем остаток work_rate
+                        db.run('UPDATE positions SET estimated_work_rate = ? WHERE id = ?', [estimated_work_rate - work_rate, position_id], (err) => {
+                            if (err) {
+                                console.error('Ошибка при создании назначения:', err.message);
+                                return res.status(500).json({ error: "Внутренняя ошибка сервера" });
+                            }
+                            res.status(201).json({ id: id });
+                        })
                     }
-                    res.status(201).json({ id: this.lastID });
-                }
-            );
-        }
-    );
+                );
+
+
+            }
+        );
+
+    })
 });
 
 app.get('/api/vacancies', (req, res) => {
@@ -468,25 +492,25 @@ app.get('/api/reports/annual', (req, res) => {
             (e.fire_date IS NULL OR e.fire_date >= ?)
         GROUP BY e.id
     `;
-    
+
     const params = [
         // Для IFNULL(ps.end_date) и IFNULL(ps.start_date)
         yearEnd, yearStart,
-        
+
         // Для IFNULL(cs.end_date) и IFNULL(cs.start_date)
         yearEnd, yearStart,
 
         yearEnd,
-        
+
         // Условия для position_schedule (start_date <= ? AND end_date >= ?)
         yearEnd, yearStart,
-        
+
         // Условия для contract_schedule (start_date <= ? AND end_date >= ?)
         yearEnd, yearStart,
-        
+
         // Бонусы (BETWEEN ? AND ?)
         yearStart, yearEnd,
-        
+
         // Условие для fire_date
         yearStart
     ];
@@ -503,7 +527,7 @@ app.get('/api/reports/annual', (req, res) => {
             const taxRate = Math.max(13 - (row.child_count * 3), 0);
             const taxAmount = (total * taxRate) / 100;
             const netIncome = total - taxAmount;
-        
+
             return {
                 employee_name: row.full_name,
                 gross_income: total,
@@ -576,7 +600,7 @@ function calculatePeriodDetails(employeeData, taxPeriods, overallStart, overallE
 
     // const cutoffDate = new Date(overallEnd);
     // cutoffDate.setFullYear(cutoffDate.getFullYear() - 18);
-    
+
     // // Учитываем детей, родившихся ПОСЛЕ (конец периода - 18 лет)
     // const childCount = employeeData.children
     //     .filter(c => new Date(c.birth_date) > cutoffDate)
@@ -658,7 +682,7 @@ function createFallbackPeriod(start, end) {
 function calculatePeriodIncome(data, periodStart, periodEnd) {
     const periodStartDate = new Date(periodStart);
     const periodEndDate = new Date(periodEnd);
-    
+
     // Расчет по должностям
     const positionIncome = data.positions.reduce((sum, pos) => {
         const posStart = new Date(pos.start);
@@ -713,12 +737,11 @@ async function getTaxPeriods(employeeId, startDate, endDate) {
         db.all(`
              WITH child_periods AS (
                 SELECT 
-                    c.employee_id,
                     c.birth_date,
-                    MAX(c.birth_date, ?) AS period_start,
-                    MIN(DATE(c.birth_date, '+18 years'), ?) AS period_end
+                    MAX(c.birth_date, DATE(?)) AS period_start,
+                    MIN(DATE(c.birth_date, '+18 years'), DATE(?)) AS period_end
                 FROM children c
-                WHERE c.employee_id = ?
+                WHERE (c.employee_id = ? OR c.second_parent_id = ?)
                     AND c.birth_date > DATE(?, '-18 years') 
             ),
             tax_calendar AS (
@@ -748,7 +771,7 @@ async function getTaxPeriods(employeeId, startDate, endDate) {
             ORDER BY period_date
         `, [
             startDate, endDate,
-            employeeId, endDate,
+            employeeId, employeeId, startDate,
             startDate, endDate
         ], (err, rows) => {
             if (err) return reject(err);
@@ -795,7 +818,7 @@ async function getPositions(employeeId, start, end) {
         db.all(`
             SELECT 
                 p.title,
-                p.payrate AS rate,
+                p.payrate * ps.work_rate AS rate,
                 ps.work_rate,
                 MAX(?, ps.start_date) AS start,
                 MIN(COALESCE(ps.end_date, ?),?) AS end,

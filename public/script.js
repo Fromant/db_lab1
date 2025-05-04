@@ -214,8 +214,8 @@ async function assignPosition() {
         end_date: document.getElementById('assignPosEnd').value || null
     };
 
-    if (!data.employee_id || !data.position_id) {
-        alert('Please select both employee and position');
+    if (!data.employee_id || !data.position_id || !data.start_date) {
+        alert('Please select both employee and position and start date');
         return;
     }
 
@@ -226,7 +226,8 @@ async function assignPosition() {
             body: JSON.stringify(data)
         });
         const result = await response.json();
-        alert(`Position assigned successfully! ID: ${result.id}`);
+        if (result.error) alert(`Произошла ошибка: ${result.error}`);
+        else alert(`Position assigned successfully! ID: ${result.id}`);
         clearForm('positionAssignment');
     } catch (error) {
         alert('Error: ' + error.message);
@@ -283,7 +284,8 @@ async function assignContract() {
         }
 
         const result = await response.json();
-        alert(`Контракт назначен (ID: ${result.id})`);
+        if (result.error) alert(`Произошка ошибка: ${result.error}`)
+        else alert(`Контракт назначен (ID: ${result.id})`);
         clearForm('contractAssignment');
     } catch (error) {
         alert(`Ошибка: ${error.message}`);
@@ -309,7 +311,8 @@ async function assignBonus() {
             body: JSON.stringify(data)
         });
         const result = await response.json();
-        alert(`Bonus assigned with ID: ${result.id}`);
+        if (result.error) alert(`Произошка ошибка: ${result.error}`)
+            else alert(`Bonus assigned with ID: ${result.id}`);
         clearForm('bonusAssignment');
     } catch (error) {
         alert('Error: ' + error.message);
@@ -542,6 +545,10 @@ async function generatePayslip() {
 
     try {
         const response = await fetch(`/api/payslip?employeeId=${employeeId}&start=${start}&end=${end}`);
+        if(!response.ok) {
+            alert(`Произошла ошибка: ${response.status}`)
+            return;
+        }
         const data = await response.json();
 
         const periodDetails = data.tax_calculation
